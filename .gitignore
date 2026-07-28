@@ -7,3 +7,5 @@ dist/
 data/
 uploads/
 supabase/supabase_backup_mila.sql
+tsconfig.tsbuildinfo
+*.tsbuildinfo
