@@ -249,6 +249,7 @@ button {
 .people {
   overflow: auto;
   flex: 1;
+  min-height: 0;
 }
 .chatlist > button,
 .people > button {
@@ -353,6 +354,9 @@ button {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* Χωρίς αυτό, το grid item μεγαλώνει όσο το περιεχόμενό του και
+     παρασέρνει το πεδίο γραψίματος εκτός οθόνης. */
+  min-height: 0;
   background: #f7f6fa;
 }
 .conversation > header {
@@ -426,6 +430,9 @@ button {
 }
 .messages {
   flex: 1;
+  /* Το min-height:auto των flex items ακυρώνει το overflow:auto —
+     το περιεχόμενο απλώνεται αντί να εμφανιστεί scrollbar. */
+  min-height: 0;
   overflow: auto;
   padding: 28px clamp(20px, 5vw, 80px);
   background-image: radial-gradient(#d9d6e6 0.7px, transparent 0.7px);
