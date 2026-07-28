@@ -1,0 +1,19 @@
+{
+  "name": "email-messenger",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c magenta,cyan \"npm run dev -w @email-messenger/server\" \"npm run dev -w @email-messenger/web\"",
+    "build": "npm run build -w @email-messenger/server && npm run build -w @email-messenger/web",
+    "typecheck": "npm run typecheck -w @email-messenger/server && npm run typecheck -w @email-messenger/web",
+    "start": "npm run start -w @email-messenger/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "prettier": "^3.9.4"
+  }
+}
