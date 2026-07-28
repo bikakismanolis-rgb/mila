@@ -400,7 +400,11 @@ function App() {
           const { data: userData } = await client.auth.getUser();
           if (userData.user) await ensureSupabaseProfile(userData.user);
           const user = await backend.getMe();
-          if (alive) setMe(user);
+          // Το onAuthStateChange πυροδοτείται και σε TOKEN_REFRESHED και όταν
+          // η καρτέλα ξαναπαίρνει focus. Χωρίς αυτόν τον έλεγχο, κάθε φορά
+          // έμπαινε νέο αντικείμενο στο state, άλλαζε η ταυτότητα του `me`
+          // και ξαναστηνόταν από την αρχή η σύνδεση realtime.
+          if (alive) setMe((prev) => (prev?.id === user.id ? prev : user));
         } catch (error) {
           console.warn("Could not complete magic-link sign in:", error);
         }
@@ -428,12 +432,12 @@ function App() {
       onConversation: loadChats,
     });
     return () => {
-      channel.unsubscribe();
+      void supabase?.removeChannel(channel);
     };
-  }, [me]);
+  }, [me?.id]);
   useEffect(() => {
     activeId.current = active?.id || null;
-    typingChannel.current?.unsubscribe();
+    if (typingChannel.current) void supabase?.removeChannel(typingChannel.current);
     typingChannel.current = null;
     setTyping(false);
     if (!active) return;
@@ -443,7 +447,8 @@ function App() {
       setTyping(on),
     );
     return () => {
-      typingChannel.current?.unsubscribe();
+      if (typingChannel.current)
+        void supabase?.removeChannel(typingChannel.current);
       typingChannel.current = null;
     };
   }, [active?.id]);
@@ -985,4 +990,58 @@ function SettingsPanel({ me, saved }: { me: User; saved: (u: User) => void }) {
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+// Χωρίς error boundary, ένα exception στο render ξηλώνει όλο το δέντρο και
+// αφήνει λευκή σελίδα χωρίς κανένα ίχνος. Εδώ τουλάχιστον φαίνεται το τι.
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("Render crashed:", error, info.componentStack);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div style={{ padding: 24, fontFamily: "system-ui", maxWidth: 720 }}>
+        <h2>Something broke while rendering.</h2>
+        <p>
+          Copy this and send it over — it says exactly what failed and where.
+        </p>
+        <pre
+          style={{
+            background: "#faf0f2",
+            border: "1px solid #e7c3cc",
+            borderRadius: 12,
+            padding: 16,
+            whiteSpace: "pre-wrap",
+            fontSize: 13,
+          }}
+        >
+          {this.state.error.message}
+          {"\n\n"}
+          {this.state.error.stack}
+        </pre>
+        <button onClick={() => location.reload()}>Reload</button>
+      </div>
+    );
+  }
+}
+
+// Πιάνει και ό,τι σκάει εκτός React (realtime callbacks, promises που
+// κανείς δεν περιμένει) και δεν θα φαινόταν αλλιώς.
+window.addEventListener("unhandledrejection", (e) =>
+  console.error("Unhandled promise rejection:", e.reason),
+);
+
+createRoot(document.getElementById("root")!).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>,
+);
