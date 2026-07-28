@@ -22,9 +22,15 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import { hasSupabaseConfig, supabase } from "./supabase";
-import type { User as SupabaseAuthUser } from "@supabase/supabase-js";
+import type {
+  RealtimeChannel,
+  User as SupabaseAuthUser,
+} from "@supabase/supabase-js";
+// Ονομάζεται backend και όχι data, γιατί το `data` χρησιμοποιείται ήδη
+// παντού ως destructured μεταβλητή από τις απαντήσεις του Supabase.
+import * as backend from "./data";
+import type { Chat, Msg, Privacy, User } from "./data";
 
-const API = "http://localhost:8787";
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as
   | string
   | undefined;
@@ -51,75 +57,6 @@ declare global {
       };
     };
   }
-}
-type User = {
-  id: string;
-  email: string | null;
-  name: string;
-  username: string;
-  bio: string;
-  avatar: string;
-  privacy: any;
-};
-type Msg = {
-  id: string;
-  conversationId: string;
-  senderId: string;
-  body: string;
-  encrypted?: boolean;
-  iv?: string;
-  createdAt: string;
-  readBy: string[];
-  deliveredTo: string[];
-  attachment?: {
-    id: string;
-    name: string;
-    mime: string;
-    size: number;
-    url: string;
-  };
-};
-type Chat = {
-  id: string;
-  type: string;
-  others: User[];
-  last?: Msg;
-  unread: number;
-  requestFrom?: string;
-  requestStatus?: string;
-  createdAt: string;
-};
-const auth = {
-  get token() {
-    return localStorage.getItem("em:token") || "";
-  },
-  set token(x: string) {
-    localStorage.setItem("em:token", x);
-  },
-  clear() {
-    localStorage.removeItem("em:token");
-  },
-};
-async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const r = await fetch(API + path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${auth.token}`,
-      ...init.headers,
-    },
-  });
-  const x = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(x.error || "Something went wrong.");
-  return x;
-}
-async function localSessionFromSupabase(accessToken: string, name?: string) {
-  const x = await api<{ token: string; user: User }>("/auth/supabase-session", {
-    method: "POST",
-    body: JSON.stringify({ accessToken, name: name || undefined }),
-  });
-  auth.token = x.token;
-  return x.user;
 }
 function loadGoogleIdentityScript() {
   return new Promise<void>((resolve, reject) => {
@@ -173,25 +110,6 @@ async function ensureSupabaseProfile(
   );
   if (error) console.warn("Supabase profile sync skipped:", error.message);
 }
-async function searchUsers(term: string): Promise<User[]> {
-  const trimmed = term.trim();
-  const local = await api<User[]>(
-    `/users/search?q=${encodeURIComponent(trimmed)}`,
-  ).catch(() => [] as User[]);
-  if (!supabase) return local;
-  const { data: sessionData } = await supabase.auth.getSession();
-  if (!sessionData.session) return local;
-  const { data, error } = await supabase.rpc("search_profiles", {
-    search_term: trimmed,
-  });
-  if (error || !data) {
-    if (error) console.warn("Supabase search fallback:", error.message);
-    return local;
-  }
-  const seen = new Set(local.map((u) => u.email || u.id));
-  const extra = (data as User[]).filter((u) => !seen.has(u.email || u.id));
-  return [...local, ...extra];
-}
 const time = (d: string) =>
   new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
@@ -234,9 +152,6 @@ function Login({ done }: { done: (u: User) => void }) {
     [name, setName] = useState(""),
     [authMode, setAuthMode] = useState<"signin" | "signup">("signin"),
     [password, setPassword] = useState(""),
-    [code, setCode] = useState(""),
-    [sent, setSent] = useState(false),
-    [dev, setDev] = useState(""),
     [notice, setNotice] = useState(""),
     [error, setError] = useState("");
   const googleButtonRef = useRef<HTMLDivElement>(null);
@@ -259,7 +174,7 @@ function Login({ done }: { done: (u: User) => void }) {
           if (error) throw error;
           if (!data.session)
             throw new Error("Supabase did not return a signed-in session.");
-          done(await localSessionFromSupabase(data.session.access_token));
+          done(await backend.getMe());
           return;
         }
 
@@ -275,7 +190,7 @@ function Login({ done }: { done: (u: User) => void }) {
         if (data.session) {
           if (data.user)
             await ensureSupabaseProfile(data.user, name || undefined);
-          done(await localSessionFromSupabase(data.session.access_token, name));
+          done(await backend.getMe());
           return;
         }
         setNotice(
@@ -286,12 +201,9 @@ function Login({ done }: { done: (u: User) => void }) {
         return;
       }
 
-      const x = await api<{ devCode: string }>("/auth/request", {
-        method: "POST",
-        body: JSON.stringify({ email: normalizedEmail }),
-      });
-      setDev(x.devCode);
-      setSent(true);
+      // Δεν υπάρχει πια εναλλακτική διαδρομή σύνδεσης. Ο παλιός κωδικός
+      // 6 ψηφίων τυπωνόταν στο response του Express — έφυγε μαζί του.
+      throw new Error("Supabase is not configured. Check your environment.");
     } catch (e: any) {
       setError(e.message);
     }
@@ -310,14 +222,13 @@ function Login({ done }: { done: (u: User) => void }) {
       if (!data.session)
         throw new Error("Supabase did not return a signed-in session.");
       if (data.user) await ensureSupabaseProfile(data.user);
-      done(await localSessionFromSupabase(data.session.access_token));
+      done(await backend.getMe());
     } catch (e: any) {
       setError(e.message);
     }
   }
   useEffect(() => {
-    if (!supabase || !GOOGLE_CLIENT_ID || sent || !googleButtonRef.current)
-      return;
+    if (!supabase || !GOOGLE_CLIENT_ID || !googleButtonRef.current) return;
     let cancelled = false;
     loadGoogleIdentityScript()
       .then(() => {
@@ -338,26 +249,7 @@ function Login({ done }: { done: (u: User) => void }) {
     return () => {
       cancelled = true;
     };
-  }, [sent]);
-  async function verify() {
-    try {
-      setError("");
-      setNotice("");
-      const normalizedEmail = email.trim().toLowerCase();
-      const x = await api<{ token: string; user: User }>("/auth/verify", {
-        method: "POST",
-        body: JSON.stringify({
-          email: normalizedEmail,
-          code,
-          name: authMode === "signup" ? name || undefined : undefined,
-        }),
-      });
-      auth.token = x.token;
-      done(x.user);
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
+  }, []);
   return (
     <main className="login">
       <section className="login-card">
@@ -372,8 +264,7 @@ function Login({ done }: { done: (u: User) => void }) {
         <p className="lede">
           A familiar messenger, built around your email — not your phone number.
         </p>
-        {!sent ? (
-          <>
+        <>
             <label>
               Email address
               <input
@@ -440,31 +331,7 @@ function Login({ done }: { done: (u: User) => void }) {
                 )}
               </>
             )}
-          </>
-        ) : (
-          <>
-            <button className="backlink" onClick={() => setSent(false)}>
-              ← Change email
-            </button>
-            <label>
-              6-digit email code
-              <input
-                autoFocus
-                inputMode="numeric"
-                maxLength={6}
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                placeholder="000000"
-              />
-            </label>
-            {dev && (
-              <div className="dev-code">
-                Development code: <b>{dev}</b>
-              </div>
-            )}
-            <button onClick={verify}>Verify & enter</button>
-          </>
-        )}
+        </>
         {notice && <p className="notice">{notice}</p>}
         {error && <p className="error">{error}</p>}
         <div className="trust">
@@ -494,35 +361,26 @@ function App() {
     [menuOpen, setMenuOpen] = useState(false),
     [uploading, setUploading] = useState(false),
     [error, setError] = useState("");
-  const ws = useRef<WebSocket | null>(null),
+  const typingChannel = useRef<RealtimeChannel | null>(null),
     bottom = useRef<HTMLDivElement>(null),
     fileInput = useRef<HTMLInputElement>(null),
     contactInput = useRef<HTMLInputElement>(null);
   const loadChats = () =>
-    api<Chat[]>("/conversations")
+    backend
+      .listChats()
       .then(setChats)
       .catch((e) => setError(e.message));
   useEffect(() => {
     let alive = true;
     async function restoreSession() {
-      if (auth.token) {
-        try {
-          const user = await api<User>("/me");
-          if (alive) setMe(user);
-          return;
-        } catch {
-          auth.clear();
-        }
-      }
       if (!supabase) return;
       const { data } = await supabase.auth.getSession();
       if (!data.session) return;
       try {
-        const user = await localSessionFromSupabase(data.session.access_token);
+        const user = await backend.getMe();
         if (alive) setMe(user);
       } catch (error) {
         console.warn("Could not restore Supabase session:", error);
-        auth.clear();
         await supabase.auth.signOut();
       }
     }
@@ -541,7 +399,7 @@ function App() {
         try {
           const { data: userData } = await client.auth.getUser();
           if (userData.user) await ensureSupabaseProfile(userData.user);
-          const user = await localSessionFromSupabase(session.access_token);
+          const user = await backend.getMe();
           if (alive) setMe(user);
         } catch (error) {
           console.warn("Could not complete magic-link sign in:", error);
@@ -553,32 +411,41 @@ function App() {
       data.subscription.unsubscribe();
     };
   }, []);
+  // Το subscribeToChanges δεν πρέπει να ξαναστήνεται σε κάθε αλλαγή
+  // συνομιλίας, οπότε το ενεργό id περνάει από ref.
+  const activeId = useRef<string | null>(null);
   useEffect(() => {
     if (!me) return;
     loadChats();
-    const s = new WebSocket(`ws://localhost:8787/realtime?token=${auth.token}`);
-    ws.current = s;
-    s.onmessage = (e) => {
-      const x = JSON.parse(e.data);
-      if (x.type === "message") {
-        setMessages((v) =>
-          x.message.conversationId === active?.id ? [...v, x.message] : v,
-        );
+    // Το RLS φιλτράρει ήδη τι φτάνει εδώ, οπότε ξαναφορτώνουμε αντί να
+    // μπαλώνουμε το state από το payload του event.
+    const channel = backend.subscribeToChanges({
+      onMessage: () => {
         loadChats();
-      }
-      if (x.type === "conversation" || x.type === "read") loadChats();
-      if (x.type === "typing" && x.conversationId === active?.id)
-        setTyping(x.active);
+        if (activeId.current)
+          backend.listMessages(activeId.current).then(setMessages).catch(() => {});
+      },
+      onConversation: loadChats,
+    });
+    return () => {
+      channel.unsubscribe();
     };
-    return () => s.close();
-  }, [me, active?.id]);
+  }, [me]);
   useEffect(() => {
-    if (active) {
-      api<Msg[]>(`/conversations/${active.id}/messages`).then(setMessages);
-      api(`/conversations/${active.id}/read`, { method: "POST" }).then(
-        loadChats,
-      );
-    }
+    activeId.current = active?.id || null;
+    typingChannel.current?.unsubscribe();
+    typingChannel.current = null;
+    setTyping(false);
+    if (!active) return;
+    backend.listMessages(active.id).then(setMessages).catch(() => {});
+    backend.markRead(active.id).then(loadChats);
+    typingChannel.current = backend.subscribeToTyping(active.id, (on) =>
+      setTyping(on),
+    );
+    return () => {
+      typingChannel.current?.unsubscribe();
+      typingChannel.current = null;
+    };
   }, [active?.id]);
   useEffect(
     () => bottom.current?.scrollIntoView({ behavior: "smooth" }),
@@ -591,7 +458,8 @@ function App() {
         query.length > 1 &&
         query !== "Imported contacts"
       )
-        searchUsers(query)
+        backend
+          .searchUsers(query)
           .then(setResults)
           .catch(() => setResults([]));
       else if (query !== "Imported contacts") setResults([]);
@@ -599,23 +467,31 @@ function App() {
     return () => clearTimeout(t);
   }, [query, mode]);
   async function openUser(u: User) {
-    const c = await api<Chat>("/conversations", {
-      method: "POST",
-      body: JSON.stringify({ userId: u.id }),
-    });
-    await loadChats();
-    setActive({ ...c, others: [u], unread: 0 });
-    setMode("chat");
+    try {
+      const id = await backend.startChat(u.id);
+      const fresh = await backend.listChats();
+      setChats(fresh);
+      setActive(
+        fresh.find((c) => c.id === id) || {
+          id,
+          type: "direct",
+          others: [u],
+          unread: 0,
+          requestStatus: "pending",
+          createdAt: new Date().toISOString(),
+        },
+      );
+      setMode("chat");
+    } catch (e: any) {
+      setError(e.message);
+    }
   }
   async function send() {
     if (!text.trim() || !active) return;
     const body = text.trim();
     setText("");
     try {
-      await api(`/conversations/${active.id}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ body }),
-      });
+      await backend.sendMessage(active.id, body);
     } catch (e: any) {
       setError(e.message);
     }
@@ -624,20 +500,8 @@ function App() {
     if (!file || !active) return;
     setUploading(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("conversationId", active.id);
-      const response = await fetch(`${API}/uploads`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${auth.token}` },
-        body: form,
-      });
-      const attachment = await response.json();
-      if (!response.ok) throw new Error(attachment.error || "Upload failed.");
-      await api(`/conversations/${active.id}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ body: "", attachment }),
-      });
+      const attachment = await backend.uploadAttachment(file, active.id);
+      await backend.sendMessage(active.id, "", attachment);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -667,12 +531,7 @@ function App() {
             .join("");
         }),
       );
-      setResults(
-        await api<User[]>("/contacts/match", {
-          method: "POST",
-          body: JSON.stringify({ hashes }),
-        }),
-      );
+      setResults(await backend.matchContacts(hashes));
       setMode("search");
       setQuery("Imported contacts");
     } catch (e: any) {
@@ -683,29 +542,35 @@ function App() {
   }
   async function blockUser() {
     if (!other || !confirm(`Block ${other.name}?`)) return;
-    await api(`/users/${other.id}/block`, { method: "POST" });
-    setMenuOpen(false);
-    setActive(null);
-    loadChats();
+    try {
+      await backend.blockUser(other.id);
+      setMenuOpen(false);
+      setActive(null);
+      loadChats();
+    } catch (e: any) {
+      setError(e.message);
+    }
   }
   async function reportUser() {
     if (!other) return;
     const reason = prompt("Briefly describe the problem:");
     if (!reason) return;
-    await api(`/users/${other.id}/report`, {
-      method: "POST",
-      body: JSON.stringify({ reason }),
-    });
-    setMenuOpen(false);
+    try {
+      await backend.reportUser(other.id, reason);
+      setMenuOpen(false);
+    } catch (e: any) {
+      setError(e.message);
+    }
   }
   async function decide(decision: "accepted" | "rejected") {
     if (!active) return;
-    await api(`/conversations/${active.id}/decision`, {
-      method: "POST",
-      body: JSON.stringify({ decision }),
-    });
-    setActive({ ...active, requestStatus: decision });
-    loadChats();
+    try {
+      await backend.respondToRequest(active.id, decision === "accepted");
+      setActive({ ...active, requestStatus: decision });
+      loadChats();
+    } catch (e: any) {
+      setError(e.message);
+    }
   }
   if (!me) return <Login done={setMe} />;
   const other = active?.others?.[0];
@@ -741,7 +606,6 @@ function App() {
         <button
           onClick={async () => {
             await supabase?.auth.signOut();
-            auth.clear();
             location.reload();
           }}
           title="Sign out"
@@ -966,12 +830,9 @@ function App() {
                   value={text}
                   onChange={(e) => {
                     setText(e.target.value);
-                    ws.current?.send(
-                      JSON.stringify({
-                        type: "typing",
-                        conversationId: active.id,
-                        active: !!e.target.value,
-                      }),
+                    void backend.sendTyping(
+                      typingChannel.current,
+                      !!e.target.value,
                     );
                   }}
                   onKeyDown={(e) => {
@@ -1005,9 +866,9 @@ function App() {
   );
 }
 function Bubble({ m, own }: { m: Msg; own: boolean }) {
-  const mediaUrl = m.attachment
-    ? `${API}${m.attachment.url}?token=${encodeURIComponent(auth.token)}`
-    : "";
+  // Το url είναι πλέον βραχύβιο signed URL από το Supabase Storage,
+  // φτιαγμένο στο data.ts — δεν χρειάζεται token εδώ.
+  const mediaUrl = m.attachment?.url || "";
   return (
     <div className={`bubble ${own ? "own" : ""}`}>
       {m.encrypted && <LockKeyhole size={12} />}
@@ -1063,12 +924,7 @@ function SettingsPanel({ me, saved }: { me: User; saved: (u: User) => void }) {
     [bio, setBio] = useState(me.bio),
     [privacy, setPrivacy] = useState(me.privacy);
   async function save() {
-    saved(
-      await api<User>("/me", {
-        method: "PATCH",
-        body: JSON.stringify({ name, bio, privacy }),
-      }),
-    );
+    saved(await backend.updateMe({ name, bio, privacy }));
   }
   return (
     <div className="settings">
@@ -1090,7 +946,12 @@ function SettingsPanel({ me, saved }: { me: User; saved: (u: User) => void }) {
         Find me by email
         <select
           value={privacy.discover}
-          onChange={(e) => setPrivacy({ ...privacy, discover: e.target.value })}
+          onChange={(e) =>
+            setPrivacy({
+              ...privacy,
+              discover: e.target.value as Privacy["discover"],
+            })
+          }
         >
           <option value="everyone">Everyone</option>
           <option value="contacts">Contacts</option>
