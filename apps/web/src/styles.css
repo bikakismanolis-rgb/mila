@@ -672,6 +672,23 @@ button {
 .toggle input {
   width: 20px;
 }
+.storage-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 22px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #faf9fd;
+  color: #6b6779;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.storage-note svg {
+  flex: none;
+  margin-top: 2px;
+}
 .legal {
   text-align: center;
   color: #9895a5;

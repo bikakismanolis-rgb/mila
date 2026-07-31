@@ -986,6 +986,11 @@ function SettingsPanel({ me, saved }: { me: User; saved: (u: User) => void }) {
         />
       </label>
       <button onClick={save}>Save changes</button>
+      <p className="storage-note">
+        <ShieldCheck size={14} /> Messages are stored on our servers and are not
+        end-to-end encrypted. Your email is never shared without your say-so,
+        and we never ask for a phone number.
+      </p>
       <p className="legal">Privacy · Terms · Export data · Delete account</p>
     </div>
   );
