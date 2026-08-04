@@ -691,11 +691,136 @@ button {
   flex: none;
   margin-top: 2px;
 }
-.legal {
-  text-align: center;
+/* --- Λογαριασμός: εξαγωγή και διαγραφή ---------------------------------- */
+.settings > button.secondary,
+.settings > button.danger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.settings > button.secondary {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.settings > button.secondary:hover:not(:disabled) {
+  border-color: #cfcbe4;
+  background: #fbfaff;
+}
+.settings > button.danger {
+  background: #fff;
+  color: #c43d58;
+  border: 1px solid #f0ccd4;
+  margin-top: 18px;
+}
+.settings > button.danger:hover:not(:disabled) {
+  background: #c43d58;
+  border-color: #c43d58;
+  color: #fff;
+}
+.settings > button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.hint {
   color: #9895a5;
-  font-size: 11px;
-  margin-top: 25px;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 8px 2px 0;
+}
+
+/* --- Modal επιβεβαίωσης -------------------------------------------------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: #201d2c99;
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  padding: calc(20px + env(safe-area-inset-top)) 20px
+    calc(20px + env(safe-area-inset-bottom));
+}
+.modal {
+  background: #fff;
+  border-radius: 20px;
+  padding: 26px;
+  width: min(440px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  box-shadow: 0 24px 60px #00000038;
+}
+.modal h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font: 800 20px/1.2 Manrope;
+  margin: 0 0 12px;
+}
+.modal p {
+  font-size: 14px;
+  line-height: 1.55;
+  color: #56525f;
+  margin: 0 0 14px;
+}
+.danger-modal h2 {
+  color: #c43d58;
+}
+.consequences {
+  margin: 0 0 18px;
+  padding-left: 20px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #56525f;
+}
+.consequences li {
+  margin-bottom: 5px;
+}
+.modal label {
+  display: block;
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.modal input {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 13px;
+  margin-top: 8px;
+  outline: none;
+  background: #fafafd;
+  letter-spacing: 1px;
+}
+.modal input:focus {
+  border-color: #c43d58;
+  box-shadow: 0 0 0 3px #c43d5818;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+.modal-actions button {
+  flex: 1;
+  border: 0;
+  border-radius: 12px;
+  padding: 13px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.modal-actions .ghost {
+  background: #f2f1f7;
+  color: var(--ink);
+}
+.modal-actions .danger {
+  background: #c43d58;
+  color: #fff;
+}
+.modal-actions .danger:disabled {
+  background: #e6bdc6;
+  cursor: default;
 }
 .toast {
   position: fixed;

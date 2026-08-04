@@ -152,6 +152,36 @@ export async function updateMe(patch: {
   return toUser(data as ProfileRow);
 }
 
+// ---------------------------------------------------------------------------
+// Λογαριασμός: εξαγωγή και διαγραφή
+// ---------------------------------------------------------------------------
+
+/**
+ * Κατεβάζει όλα τα δεδομένα του χρήστη σε JSON (GDPR άρθρο 20).
+ * Δεν αλλάζει τίποτα στη βάση.
+ */
+export async function exportMyData(): Promise<unknown> {
+  const { data, error } = await db().rpc("export_my_data");
+  if (error) fail("Could not export your data.", error);
+  return data;
+}
+
+/**
+ * Διαγράφει οριστικά τον λογαριασμό. Δεν γυρίζει πίσω.
+ *
+ * Ο λογαριασμός στο auth φεύγει μέσα στο RPC, οπότε το token που κρατάει ο
+ * browser αναφέρεται σε χρήστη που δεν υπάρχει πια. Το signOut από κάτω
+ * καθαρίζει το localStorage· αν αποτύχει (λογικό, αφού ο χρήστης χάθηκε) δεν
+ * μας νοιάζει — γι' αυτό το catch είναι σκόπιμα σιωπηλό.
+ */
+export async function deleteMyAccount(): Promise<void> {
+  const { error } = await db().rpc("delete_my_account");
+  if (error) fail("Could not delete your account.", error);
+  await db()
+    .auth.signOut()
+    .catch(() => undefined);
+}
+
 export async function searchUsers(term: string): Promise<User[]> {
   const trimmed = term.trim();
   if (trimmed.length < 2) return [];

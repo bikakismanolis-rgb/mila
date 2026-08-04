@@ -69,5 +69,14 @@ Adding real end-to-end encryption means key agreement, identity verification, fo
 5. Upload scanning, storage quotas and retention.
 6. Abuse review tooling for the reports table.
 7. Accessibility audit, privacy policy and terms.
-8. Working account deletion. The settings screen lists "Delete account" as plain text that does nothing. Both app stores reject accounts-based apps without it.
-9. Push notifications. A messenger that cannot tell you a message arrived is a website you have to remember to visit.
+8. Push notifications. A messenger that cannot tell you a message arrived is a website you have to remember to visit.
+
+## Account deletion
+
+`delete_my_account()` erases the `auth.users` row outright — password, Google identity, sessions, and the email address are gone, and the address is freed for someone else to register. What survives is a single anonymised `profiles` row: name replaced with "Deleted user", email replaced with a synthetic address, photo and bio cleared, `deleted_at` set.
+
+That tombstone exists so `messages.sender_id`, `conversations.created_by` and `reports` still have something to point at. Without it, deleting an account would take every message the person ever sent with it, gutting the other party's conversation.
+
+The trade is real and belongs in the privacy policy: the server keeps someone's words after they asked to leave. A formal GDPR erasure request needs those messages deleted by hand.
+
+`export_my_data()` returns the caller's profile, conversation list and own messages as JSON. It deliberately excludes the other party's messages — those are someone else's personal data.

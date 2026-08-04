@@ -5,6 +5,7 @@ import {
   Ban,
   Check,
   CheckCheck,
+  Download,
   FileText,
   Flag,
   LockKeyhole,
@@ -16,6 +17,8 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  Trash2,
+  TriangleAlert,
   UserPlus,
   UserRound,
   X,
@@ -993,7 +996,122 @@ function SettingsPanel({ me, saved }: { me: User; saved: (u: User) => void }) {
         end-to-end encrypted. Your email is never shared without your say-so,
         and we never ask for a phone number.
       </p>
-      <p className="legal">Privacy · Terms · Export data · Delete account</p>
+      <AccountSection email={me.email || ""} />
+    </div>
+  );
+}
+
+// Ό,τι αφορά τον ίδιο τον λογαριασμό, χωριστά από τις ρυθμίσεις. Και τα δύο
+// stores απαιτούν να είναι εδώ: χωρίς πραγματική διαγραφή λογαριασμού μέσα
+// στην εφαρμογή, το app απορρίπτεται στον έλεγχο.
+function AccountSection({ email }: { email: string }) {
+  const [confirming, setConfirming] = useState(false),
+    [exporting, setExporting] = useState(false),
+    [error, setError] = useState("");
+
+  async function exportData() {
+    setError("");
+    setExporting(true);
+    try {
+      const payload = await backend.exportMyData();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `mila-data-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  return (
+    <>
+      <h3>Your account</h3>
+      <button className="secondary" onClick={exportData} disabled={exporting}>
+        <Download size={15} />
+        {exporting ? "Preparing…" : "Download my data"}
+      </button>
+      <p className="hint">
+        A JSON file with your profile, your conversations and every message you
+        sent. Nothing is deleted.
+      </p>
+
+      <button className="danger" onClick={() => setConfirming(true)}>
+        <Trash2 size={15} />
+        Delete my account
+      </button>
+      {error && <p className="error">{error}</p>}
+
+      {confirming && <DeleteAccountDialog email={email} close={() => setConfirming(false)} />}
+    </>
+  );
+}
+
+function DeleteAccountDialog({ email, close }: { email: string; close: () => void }) {
+  const [typed, setTyped] = useState(""),
+    [working, setWorking] = useState(false),
+    [error, setError] = useState("");
+  const armed = typed.trim().toUpperCase() === "DELETE";
+
+  async function confirm() {
+    if (!armed || working) return;
+    setError("");
+    setWorking(true);
+    try {
+      await backend.deleteMyAccount();
+      // Ο λογαριασμός δεν υπάρχει πια, άρα ούτε το state. Καθαρό reload είναι
+      // πιο ασφαλές από το να ξηλώνουμε το δέντρο του React με το χέρι.
+      location.reload();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Deletion failed.");
+      setWorking(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={working ? undefined : close}>
+      <div className="modal danger-modal" onClick={(e) => e.stopPropagation()}>
+        <h2>
+          <TriangleAlert size={18} /> Delete your account
+        </h2>
+        <p>
+          This cannot be undone. <b>{email}</b> will be released and you will not
+          be able to sign back in.
+        </p>
+        <ul className="consequences">
+          <li>Your login, password and Google connection are erased.</li>
+          <li>Your name, photo and profile details are erased.</li>
+          <li>
+            Messages you already sent stay in the other person&rsquo;s chat,
+            shown as sent by a deleted user.
+          </li>
+        </ul>
+        <label>
+          Type <b>DELETE</b> to confirm
+          <input
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            autoFocus
+            disabled={working}
+            placeholder="DELETE"
+          />
+        </label>
+        {error && <p className="error">{error}</p>}
+        <div className="modal-actions">
+          <button className="ghost" onClick={close} disabled={working}>
+            Keep my account
+          </button>
+          <button className="danger" onClick={confirm} disabled={!armed || working}>
+            {working ? "Deleting…" : "Delete permanently"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
