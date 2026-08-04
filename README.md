@@ -26,7 +26,20 @@ The browser talks directly to Supabase. There is no application server.
 
 Reads and writes go through `security definer` RPCs rather than direct table access, so privacy rules and multi-table joins stay in the database. `apps/web/src/data.ts` is the single boundary between the UI and Supabase.
 
-`packages/server` is the retired prototype backend. Nothing calls it.
+The prototype Express backend has been removed. Nothing replaced it, because nothing needed to.
+
+## Shipping targets
+
+One web build serves all four channels — see `docs/DISTRIBUTION.md` for the full steps and prerequisites.
+
+| Target | Command | Needs |
+| --- | --- | --- |
+| Browser + installable PWA | `npm run build` | nothing |
+| Android | `npm run android` | Android Studio, Play Console ($25 once) |
+| iOS | `npm run ios` | a Mac with Xcode, Apple Developer ($99/yr) |
+| Desktop | `npm run desktop:build` | Rust toolchain |
+
+`apps/web/src/platform.ts` is where the app figures out which of those it is running inside. It matters mostly for auth redirects: on native, `window.location.origin` is `capacitor://localhost`, which is useless as a redirect target, so `VITE_PUBLIC_SITE_URL` takes over.
 
 ## Included
 
@@ -56,3 +69,5 @@ Adding real end-to-end encryption means key agreement, identity verification, fo
 5. Upload scanning, storage quotas and retention.
 6. Abuse review tooling for the reports table.
 7. Accessibility audit, privacy policy and terms.
+8. Working account deletion. The settings screen lists "Delete account" as plain text that does nothing. Both app stores reject accounts-based apps without it.
+9. Push notifications. A messenger that cannot tell you a message arrived is a website you have to remember to visit.

@@ -30,6 +30,8 @@ import type {
 // παντού ως destructured μεταβλητή από τις απαντήσεις του Supabase.
 import * as backend from "./data";
 import type { Chat, Msg, Privacy, User } from "./data";
+import { authRedirectUrl, registerServiceWorker } from "./platform";
+import { bootstrapNative } from "./native";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as
   | string
@@ -183,7 +185,7 @@ function Login({ done }: { done: (u: User) => void }) {
           password,
           options: {
             data: { display_name: name || undefined },
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: authRedirectUrl,
           },
         });
         if (error) throw error;
@@ -1050,3 +1052,6 @@ createRoot(document.getElementById("root")!).render(
     <App />
   </ErrorBoundary>,
 );
+
+registerServiceWorker();
+void bootstrapNative();

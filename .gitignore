@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 dist/
 .env
 .env.local
@@ -9,3 +9,31 @@ uploads/
 supabase/supabase_backup_mila.sql
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+
+# Tauri (desktop)
+src-tauri/target/
+src-tauri/gen/
+
+# Capacitor / Android
+android/.gradle/
+android/.idea/
+android/local.properties
+android/app/build/
+android/build/
+android/capacitor-cordova-android-plugins/
+*.keystore
+!android/app/debug.keystore
+keystore.properties
+
+# Capacitor / iOS
+ios/App/Pods/
+ios/App/build/
+ios/App/output/
+ios/App/App/public/
+ios/DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# macOS / Windows σκουπίδια
+.DS_Store
+Thumbs.db
