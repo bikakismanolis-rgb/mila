@@ -33,7 +33,7 @@ import type {
 // παντού ως destructured μεταβλητή από τις απαντήσεις του Supabase.
 import * as backend from "./data";
 import type { Chat, Msg, Privacy, User } from "./data";
-import { authRedirectUrl, registerServiceWorker } from "./platform";
+import { authRedirectUrl, privacyPolicyUrl, registerServiceWorker } from "./platform";
 import { bootstrapNative } from "./native";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as
@@ -308,6 +308,16 @@ function Login({ done }: { done: (u: User) => void }) {
             <button onClick={request}>
               {authMode === "signin" ? "Sign in" : "Create account"}
             </button>
+            {authMode === "signup" && (
+              <p className="consent">
+                By creating an account you agree to our{" "}
+                <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
+                  privacy policy
+                </a>
+                . Messages are stored on our servers and are not end-to-end
+                encrypted.
+              </p>
+            )}
             <div className="auth-choice">
               {authMode === "signin" ? (
                 <>
@@ -1033,6 +1043,12 @@ function AccountSection({ email }: { email: string }) {
   return (
     <>
       <h3>Your account</h3>
+      <p className="hint">
+        <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
+          Read our privacy policy
+        </a>{" "}
+        — what we keep, and what stays behind if you leave.
+      </p>
       <button className="secondary" onClick={exportData} disabled={exporting}>
         <Download size={15} />
         {exporting ? "Preparing…" : "Download my data"}

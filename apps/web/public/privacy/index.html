@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Privacy policy · Mila</title>
+    <meta name="description" content="What Mila collects, why, and what you can do about it." />
+    <meta name="theme-color" content="#6557e8" />
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+    <style>
+      :root {
+        --purple: #6557e8;
+        --ink: #20202a;
+        --muted: #6b6779;
+        --line: #e9e8ef;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 0 20px calc(70px + env(safe-area-inset-bottom));
+        font: 400 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: #fff;
+      }
+      main { max-width: 720px; margin: 0 auto; }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: calc(36px + env(safe-area-inset-top)) 0 8px;
+      }
+      header img { width: 46px; height: 46px; border-radius: 14px; }
+      header b { font-size: 19px; font-weight: 700; }
+      h1 { font-size: 30px; line-height: 1.2; margin: 22px 0 6px; letter-spacing: -0.5px; }
+      h2 { font-size: 19px; margin: 38px 0 10px; letter-spacing: -0.2px; }
+      h3 { font-size: 16px; margin: 24px 0 6px; }
+      p, li { color: #35323f; }
+      li { margin-bottom: 6px; }
+      .updated { color: var(--muted); font-size: 14px; margin: 0 0 6px; }
+      a { color: var(--purple); }
+      table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 15px; }
+      th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { font-weight: 600; width: 34%; }
+      .callout {
+        border: 1px solid #f0d9a8;
+        background: #fffaef;
+        border-radius: 12px;
+        padding: 16px 18px;
+        margin: 20px 0;
+      }
+      .callout p:last-child { margin-bottom: 0; }
+      .callout p:first-child { margin-top: 0; }
+      .todo {
+        background: #fdecef;
+        border: 1px dashed #e2919f;
+        border-radius: 6px;
+        padding: 1px 7px;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 13px;
+        color: #a32d40;
+      }
+      footer {
+        margin-top: 50px;
+        padding-top: 20px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <img src="/icons/icon-192.png" alt="" />
+        <b>Mila</b>
+      </header>
+
+      <h1>Privacy policy</h1>
+      <p class="updated">Last updated: 4 August 2026</p>
+
+      <p>
+        Mila is a messenger that uses your email address instead of your phone
+        number. This page explains what we hold, why we hold it, and how you get
+        rid of it. It is written to be read, not to be survived.
+      </p>
+
+      <div class="callout">
+        <p>
+          <b>Your messages are not end-to-end encrypted.</b> They are stored on
+          our database server as ordinary text. That means we are technically
+          able to read them, and so is anyone who obtains access to the database.
+          We do not read them as a matter of practice, but we will not pretend to
+          a protection we have not built. Do not use Mila for anything that would
+          harm you if it were exposed.
+        </p>
+      </div>
+
+      <h2>Who is responsible</h2>
+      <p>
+        The data controller is <span class="todo">[COMPANY NAME]</span>,
+        <span class="todo">[REGISTERED ADDRESS]</span>,
+        <span class="todo">[COUNTRY]</span>. For anything in this policy, or to
+        exercise any of the rights below, write to
+        <span class="todo">[CONTACT EMAIL]</span>. We answer within 30 days, as
+        the GDPR requires.
+      </p>
+
+      <h2>What we collect</h2>
+      <table>
+        <tr>
+          <th>Your email address</th>
+          <td>How you sign in, and how other people find you. Required.</td>
+        </tr>
+        <tr>
+          <th>Your password</th>
+          <td>
+            Stored only as a cryptographic hash by our authentication provider.
+            We never see it. Not collected if you sign in with Google.
+          </td>
+        </tr>
+        <tr>
+          <th>Display name, username, bio, photo</th>
+          <td>Whatever you choose to put on your profile. All optional except the name.</td>
+        </tr>
+        <tr>
+          <th>Your messages and attachments</th>
+          <td>The content of what you send, stored until you or the recipient delete it.</td>
+        </tr>
+        <tr>
+          <th>Delivery and read receipts</th>
+          <td>When a message reached someone and when they opened it. You can turn read receipts off in settings.</td>
+        </tr>
+        <tr>
+          <th>Online status</th>
+          <td>Whether you are currently using the app. You can turn this off in settings.</td>
+        </tr>
+        <tr>
+          <th>Contact matching (only if you ask for it)</th>
+          <td>
+            If you upload a contact list to find people you know, your device
+            hashes the email addresses before sending them. We never receive the
+            addresses themselves and we do not store the hashes after matching.
+          </td>
+        </tr>
+        <tr>
+          <th>Blocks and reports</th>
+          <td>Who you blocked, and any abuse reports you filed or that named you.</td>
+        </tr>
+      </table>
+
+      <p>
+        We do not collect your phone number, your contacts list, your location,
+        your device identifiers, or your browsing activity. There is no
+        advertising in Mila and no analytics or tracking code on this page.
+      </p>
+
+      <h2>Why we are allowed to hold it</h2>
+      <ul>
+        <li>
+          <b>To provide the service you asked for</b> (GDPR Article 6(1)(b)) —
+          your account, your profile, your conversations. Without this there is
+          no app.
+        </li>
+        <li>
+          <b>Our legitimate interest in keeping the service safe</b> (Article
+          6(1)(f)) — blocks, abuse reports, and rate limiting exist so that
+          people can use Mila without being harassed.
+        </li>
+        <li>
+          <b>Your consent</b> (Article 6(1)(a)) — contact matching only runs when
+          you explicitly start it, and you can withdraw at any time by not
+          running it again.
+        </li>
+      </ul>
+
+      <h2>Who else touches your data</h2>
+      <p>
+        We are a small operation and we do not run our own infrastructure. These
+        companies process data on our behalf, under contract, and are not allowed
+        to use it for their own purposes.
+      </p>
+      <table>
+        <tr>
+          <th>Supabase</th>
+          <td>
+            Database, authentication and file storage. Your account, profile,
+            messages and attachments live here. Region:
+            <span class="todo">[SUPABASE REGION]</span>.
+          </td>
+        </tr>
+        <tr>
+          <th>Vercel</th>
+          <td>Serves the web app. Sees your IP address as any web server would.</td>
+        </tr>
+        <tr>
+          <th>Resend</th>
+          <td>Sends account confirmation and password reset emails. Receives your email address.</td>
+        </tr>
+        <tr>
+          <th>Google</th>
+          <td>Only if you choose Google Sign-In. Google confirms your identity to us; we receive your email address and name.</td>
+        </tr>
+        <tr>
+          <th>DiceBear</th>
+          <td>
+            Generates the placeholder avatar shown when you have not uploaded a
+            photo. Your display name is included in the image request. Upload a
+            photo if you would rather it were not.
+          </td>
+        </tr>
+      </table>
+
+      <h2>How long we keep it</h2>
+      <p>
+        Your account and profile stay until you delete them. Messages stay until
+        deleted by you or the person you sent them to. Abuse reports are kept
+        after account deletion, without identifying details, because a safety
+        record that vanishes when the reported person leaves is not a safety
+        record.
+      </p>
+
+      <h2>Deleting your account</h2>
+      <p>
+        Settings → Your account → Delete my account. It takes effect immediately
+        and cannot be undone.
+      </p>
+      <h3>What is erased</h3>
+      <ul>
+        <li>Your login, password and Google connection.</li>
+        <li>Your email address — it is released and someone else could register it.</li>
+        <li>Your display name, username, bio and profile photo.</li>
+        <li>Your block list and any files you uploaded but never sent.</li>
+      </ul>
+      <h3>What is not</h3>
+      <p>
+        Messages you already sent stay in the recipient's conversation, shown as
+        coming from a deleted user with no name or address attached. We keep them
+        because that conversation is also the other person's record, and deleting
+        one side of it would take away something that is theirs as much as yours.
+      </p>
+      <p>
+        If you want your sent messages destroyed as well, write to us and say so.
+        That is your right under GDPR Article 17 and we will do it by hand.
+      </p>
+
+      <h2>Your rights</h2>
+      <p>
+        If you are in the EU or the UK, the GDPR gives you the following. You can
+        exercise the first two yourself, in the app, right now.
+      </p>
+      <ul>
+        <li><b>Access and portability</b> — Settings → Your account → Download my data gives you everything we hold about you as a JSON file.</li>
+        <li><b>Erasure</b> — the delete button above, or write to us for the harder version.</li>
+        <li><b>Rectification</b> — edit your profile, or ask us.</li>
+        <li><b>Objection and restriction</b> — you can object to processing based on our legitimate interest.</li>
+        <li><b>Complaint</b> — you can complain to your national data protection authority. In Greece this is the Hellenic Data Protection Authority (<a href="https://www.dpa.gr">dpa.gr</a>). You do not need to go through us first.</li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>
+        Mila is not for anyone under 16. We do not knowingly hold data about
+        children. If you believe a child has an account, tell us and we will
+        remove it.
+      </p>
+
+      <h2>Security</h2>
+      <p>
+        Traffic is encrypted in transit. Access to the database is governed by
+        row-level rules so that one account cannot read another's conversations.
+        Passwords are hashed. As stated at the top, message content is not
+        encrypted at rest, which is the most important limitation on this page.
+      </p>
+
+      <h2>Changes</h2>
+      <p>
+        If we change this policy in a way that matters, we will say so in the app
+        before the change takes effect, not quietly edit this page. The date at
+        the top always reflects the current version.
+      </p>
+
+      <footer>
+        <p>
+          Mila · <a href="/">Back to the app</a>
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

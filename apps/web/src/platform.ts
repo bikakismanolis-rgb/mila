@@ -24,6 +24,11 @@ export const isStandalone =
   // iOS Safari, που δεν υποστηρίζει το display-mode query
   (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
+/** Το δημόσιο domain του app, όπως το βλέπει ο έξω κόσμος. */
+export const publicSiteUrl: string =
+  (import.meta.env.VITE_PUBLIC_SITE_URL as string) ||
+  "https://mila-web-ivory.vercel.app";
+
 /**
  * Πού πρέπει να γυρίσει ο χρήστης μετά από επιβεβαίωση email ή OAuth.
  *
@@ -33,9 +38,13 @@ export const isStandalone =
  * δείχνουμε στο public site, που έχει καταχωρηθεί ως Redirect URL στη Supabase.
  */
 export const authRedirectUrl: string =
-  isNative || isTauri
-    ? (import.meta.env.VITE_PUBLIC_SITE_URL as string) || "https://mila-web-ivory.vercel.app"
-    : window.location.origin;
+  isNative || isTauri ? publicSiteUrl : window.location.origin;
+
+/**
+ * Το privacy policy. Πάντα απόλυτο URL: μέσα σε Capacitor ένα σκέτο "/privacy"
+ * θα έψαχνε αρχείο μέσα στο bundle του app, που δεν υπάρχει εκεί.
+ */
+export const privacyPolicyUrl = `${publicSiteUrl}/privacy`;
 
 /** Δηλώνει τον service worker. Μόνο σε browser production build. */
 export function registerServiceWorker(): void {
