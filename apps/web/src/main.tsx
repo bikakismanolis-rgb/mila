@@ -152,14 +152,60 @@ function SupabaseStatus() {
 
   return <div className={`supabase-status ${ok ? "ok" : ""}`}>{status}</div>;
 }
-function Login({ done }: { done: (u: User) => void }) {
+function Login({
+  done,
+  recoveringPassword,
+  recoveryDone,
+}: {
+  done: (u: User) => void;
+  recoveringPassword: boolean;
+  recoveryDone: () => void;
+}) {
   const [email, setEmail] = useState(""),
     [name, setName] = useState(""),
     [authMode, setAuthMode] = useState<"signin" | "signup">("signin"),
     [password, setPassword] = useState(""),
+    [newPassword, setNewPassword] = useState(""),
     [notice, setNotice] = useState(""),
     [error, setError] = useState("");
   const googleButtonRef = useRef<HTMLDivElement>(null);
+
+  async function resetPassword() {
+    try {
+      setError("");
+      setNotice("");
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!supabase) throw new Error("Supabase is not configured yet.");
+      if (!normalizedEmail) throw new Error("Enter your email first.");
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        normalizedEmail,
+        { redirectTo: authRedirectUrl },
+      );
+      if (error) throw error;
+      setNotice("Password reset email sent. Open the link and set a new password.");
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+
+  async function updateRecoveredPassword() {
+    try {
+      setError("");
+      setNotice("");
+      if (!supabase) throw new Error("Supabase is not configured yet.");
+      if (newPassword.length < 6)
+        throw new Error("Password must be at least 6 characters.");
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (error) throw error;
+      recoveryDone();
+      done(await backend.getMe());
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+
   async function request() {
     try {
       setError("");
@@ -255,6 +301,39 @@ function Login({ done }: { done: (u: User) => void }) {
       cancelled = true;
     };
   }, []);
+
+  if (recoveringPassword) {
+    return (
+      <main className="login">
+        <section className="login-card">
+          <div className="brandmark">
+            <LockKeyhole />
+          </div>
+          <h1>Set a new password.</h1>
+          <p className="lede">Choose a fresh password for your Mila account.</p>
+          <label>
+            New password
+            <input
+              autoFocus
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="At least 6 characters"
+            />
+          </label>
+          <button onClick={updateRecoveredPassword}>Update password</button>
+          {notice && <p className="notice">{notice}</p>}
+          {error && <p className="error">{error}</p>}
+        </section>
+        <aside>
+          <div className="orb"></div>
+          <h2>Your conversations belong in a messenger, not an inbox.</h2>
+          <p>Realtime chat, requests and privacy controls in one calm place.</p>
+        </aside>
+      </main>
+    );
+  }
+
   return (
     <main className="login">
       <section className="login-card">
@@ -325,6 +404,10 @@ function Login({ done }: { done: (u: User) => void }) {
                   <button type="button" onClick={() => setAuthMode("signup")}>
                     Create account
                   </button>
+                  <span>·</span>
+                  <button type="button" onClick={resetPassword}>
+                    Forgot password?
+                  </button>
                 </>
               ) : (
                 <>
@@ -365,6 +448,7 @@ function Login({ done }: { done: (u: User) => void }) {
 
 function App() {
   const [me, setMe] = useState<User | null>(null),
+    [recoveringPassword, setRecoveringPassword] = useState(false),
     [chats, setChats] = useState<Chat[]>([]),
     [active, setActive] = useState<Chat | null>(null),
     [messages, setMessages] = useState<Msg[]>([]),
@@ -408,8 +492,13 @@ function App() {
     const client = supabase;
     if (!client) return;
     let alive = true;
-    const { data } = client.auth.onAuthStateChange((_event, session) => {
+    const { data } = client.auth.onAuthStateChange((event, session) => {
       if (!session) return;
+      if (event === "PASSWORD_RECOVERY") {
+        setRecoveringPassword(true);
+        setMe(null);
+        return;
+      }
       window.setTimeout(async () => {
         try {
           const { data: userData } = await client.auth.getUser();
@@ -592,7 +681,14 @@ function App() {
       setError(e.message);
     }
   }
-  if (!me) return <Login done={setMe} />;
+  if (!me)
+    return (
+      <Login
+        done={setMe}
+        recoveringPassword={recoveringPassword}
+        recoveryDone={() => setRecoveringPassword(false)}
+      />
+    );
   const other = active?.others?.[0];
   return (
     <div className="shell">
