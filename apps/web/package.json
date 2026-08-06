@@ -9,6 +9,10 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/keyboard": "^8.0.5",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@supabase/supabase-js": "^2.110.1",
     "@vitejs/plugin-react": "^4.6.0",
     "lucide-react": "^0.525.0",
