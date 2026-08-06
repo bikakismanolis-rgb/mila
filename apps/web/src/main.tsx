@@ -33,7 +33,12 @@ import type {
 // παντού ως destructured μεταβλητή από τις απαντήσεις του Supabase.
 import * as backend from "./data";
 import type { Chat, Msg, Privacy, User } from "./data";
-import { authRedirectUrl, privacyPolicyUrl, registerServiceWorker } from "./platform";
+import {
+  authRedirectUrl,
+  passwordResetRedirectUrl,
+  privacyPolicyUrl,
+  registerServiceWorker,
+} from "./platform";
 import { bootstrapNative } from "./native";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as
@@ -124,7 +129,11 @@ const time = (d: string) =>
 function isPasswordRecoveryLink() {
   const search = new URLSearchParams(window.location.search);
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  return search.get("type") === "recovery" || hash.get("type") === "recovery";
+  return (
+    window.location.pathname === "/reset-password" ||
+    search.get("type") === "recovery" ||
+    hash.get("type") === "recovery"
+  );
 }
 
 function SupabaseStatus() {
@@ -185,7 +194,7 @@ function Login({
       if (!normalizedEmail) throw new Error("Enter your email first.");
       const { error } = await supabase.auth.resetPasswordForEmail(
         normalizedEmail,
-        { redirectTo: authRedirectUrl },
+        { redirectTo: passwordResetRedirectUrl },
       );
       if (error) throw error;
       setNotice("Password reset email sent. Open the link and set a new password.");
