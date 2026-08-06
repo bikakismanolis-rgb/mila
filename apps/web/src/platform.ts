@@ -40,7 +40,7 @@ export const publicSiteUrl: string =
 export const authRedirectUrl: string =
   isNative || isTauri ? publicSiteUrl : window.location.origin;
 
-export const passwordResetRedirectUrl = `${authRedirectUrl}/reset-password`;
+export const passwordResetRedirectUrl = `${authRedirectUrl}/?resetPassword=1`;
 
 /**
  * Το privacy policy. Πάντα απόλυτο URL: μέσα σε Capacitor ένα σκέτο "/privacy"

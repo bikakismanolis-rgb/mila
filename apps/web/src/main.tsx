@@ -130,6 +130,7 @@ function isPasswordRecoveryLink() {
   const search = new URLSearchParams(window.location.search);
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   return (
+    search.get("resetPassword") === "1" ||
     window.location.pathname === "/reset-password" ||
     search.get("type") === "recovery" ||
     hash.get("type") === "recovery"
