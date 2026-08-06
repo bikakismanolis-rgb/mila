@@ -5,6 +5,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/reset-password",
+      "destination": "/index.html"
+    },
+    {
       "source": "/((?!privacy|icons|assets|sw\\.js|manifest\\.webmanifest).*)",
       "destination": "/index.html"
     }
