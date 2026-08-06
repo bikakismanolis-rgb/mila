@@ -692,36 +692,69 @@ button {
   margin-top: 2px;
 }
 /* --- Λογαριασμός: εξαγωγή και διαγραφή ---------------------------------- */
-.settings > button.secondary,
-.settings > button.danger {
+.account-section {
+  margin: 18px 0 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.account-section h3 {
+  margin-top: 0;
+}
+.account-section button {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  padding: 14px;
+  font-weight: 700;
+  margin-top: 10px;
+}
+.account-section button.secondary,
+.account-section button.danger {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
 }
-.settings > button.secondary {
+.account-section button.secondary {
   background: #fff;
   color: var(--ink);
   border: 1px solid var(--line);
 }
-.settings > button.secondary:hover:not(:disabled) {
+.account-section button.secondary:hover:not(:disabled) {
   border-color: #cfcbe4;
   background: #fbfaff;
 }
-.settings > button.danger {
+.account-section button.danger {
   background: #fff;
   color: #c43d58;
   border: 1px solid #f0ccd4;
   margin-top: 18px;
 }
-.settings > button.danger:hover:not(:disabled) {
+.account-section button.danger:hover:not(:disabled) {
   background: #c43d58;
   border-color: #c43d58;
   color: #fff;
 }
-.settings > button:disabled {
+.account-section button:disabled {
   opacity: 0.55;
   cursor: default;
+}
+.password-change {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fafafd;
+}
+.password-change label {
+  margin: 0 0 10px;
+}
+.password-change button {
+  margin-top: 0;
+  background: var(--purple);
+  color: #fff;
 }
 .hint {
   color: #9895a5;

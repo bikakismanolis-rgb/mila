@@ -121,6 +121,12 @@ const time = (d: string) =>
     minute: "2-digit",
   }).format(new Date(d));
 
+function isPasswordRecoveryLink() {
+  const search = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return search.get("type") === "recovery" || hash.get("type") === "recovery";
+}
+
 function SupabaseStatus() {
   const [status, setStatus] = useState("Checking Supabase connection…"),
     [ok, setOk] = useState(false);
@@ -199,6 +205,8 @@ function Login({
         password: newPassword,
       });
       if (error) throw error;
+      sessionStorage.removeItem("mila:password-recovery");
+      window.history.replaceState({}, document.title, window.location.pathname);
       recoveryDone();
       done(await backend.getMe());
     } catch (e: any) {
@@ -448,7 +456,11 @@ function Login({
 
 function App() {
   const [me, setMe] = useState<User | null>(null),
-    [recoveringPassword, setRecoveringPassword] = useState(false),
+    [recoveringPassword, setRecoveringPassword] = useState(
+      () =>
+        isPasswordRecoveryLink() ||
+        sessionStorage.getItem("mila:password-recovery") === "1",
+    ),
     [chats, setChats] = useState<Chat[]>([]),
     [active, setActive] = useState<Chat | null>(null),
     [messages, setMessages] = useState<Msg[]>([]),
@@ -473,6 +485,13 @@ function App() {
     let alive = true;
     async function restoreSession() {
       if (!supabase) return;
+      if (
+        isPasswordRecoveryLink() ||
+        sessionStorage.getItem("mila:password-recovery") === "1"
+      ) {
+        setRecoveringPassword(true);
+        return;
+      }
       const { data } = await supabase.auth.getSession();
       if (!data.session) return;
       try {
@@ -495,6 +514,7 @@ function App() {
     const { data } = client.auth.onAuthStateChange((event, session) => {
       if (!session) return;
       if (event === "PASSWORD_RECOVERY") {
+        sessionStorage.setItem("mila:password-recovery", "1");
         setRecoveringPassword(true);
         setMe(null);
         return;
@@ -1049,6 +1069,7 @@ function SettingsPanel({ me, saved }: { me: User; saved: (u: User) => void }) {
         <b>{me.name}</b>
         <small>{me.email}</small>
       </div>
+      <AccountSection email={me.email || ""} />
       <label>
         Display name
         <input value={name} onChange={(e) => setName(e.target.value)} />
@@ -1102,7 +1123,6 @@ function SettingsPanel({ me, saved }: { me: User; saved: (u: User) => void }) {
         end-to-end encrypted. Your email is never shared without your say-so,
         and we never ask for a phone number.
       </p>
-      <AccountSection email={me.email || ""} />
     </div>
   );
 }
@@ -1113,10 +1133,38 @@ function SettingsPanel({ me, saved }: { me: User; saved: (u: User) => void }) {
 function AccountSection({ email }: { email: string }) {
   const [confirming, setConfirming] = useState(false),
     [exporting, setExporting] = useState(false),
+    [passwordOpen, setPasswordOpen] = useState(false),
+    [newPassword, setNewPassword] = useState(""),
+    [savingPassword, setSavingPassword] = useState(false),
+    [notice, setNotice] = useState(""),
     [error, setError] = useState("");
+
+  async function changePassword() {
+    setError("");
+    setNotice("");
+    if (newPassword.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+    setSavingPassword(true);
+    try {
+      const { error } = await supabase!.auth.updateUser({
+        password: newPassword,
+      });
+      if (error) throw error;
+      setNewPassword("");
+      setPasswordOpen(false);
+      setNotice("Password updated.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Password update failed.");
+    } finally {
+      setSavingPassword(false);
+    }
+  }
 
   async function exportData() {
     setError("");
+    setNotice("");
     setExporting(true);
     try {
       const payload = await backend.exportMyData();
@@ -1137,7 +1185,7 @@ function AccountSection({ email }: { email: string }) {
   }
 
   return (
-    <>
+    <section className="account-section">
       <h3>Your account</h3>
       <p className="hint">
         <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
@@ -1145,6 +1193,30 @@ function AccountSection({ email }: { email: string }) {
         </a>{" "}
         — what we keep, and what stays behind if you leave.
       </p>
+      <button
+        className="secondary"
+        type="button"
+        onClick={() => setPasswordOpen((open) => !open)}
+      >
+        <LockKeyhole size={15} />
+        Change password
+      </button>
+      {passwordOpen && (
+        <div className="password-change">
+          <label>
+            New password
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="At least 6 characters"
+            />
+          </label>
+          <button onClick={changePassword} disabled={savingPassword}>
+            {savingPassword ? "Saving…" : "Save new password"}
+          </button>
+        </div>
+      )}
       <button className="secondary" onClick={exportData} disabled={exporting}>
         <Download size={15} />
         {exporting ? "Preparing…" : "Download my data"}
@@ -1158,10 +1230,11 @@ function AccountSection({ email }: { email: string }) {
         <Trash2 size={15} />
         Delete my account
       </button>
+      {notice && <p className="notice">{notice}</p>}
       {error && <p className="error">{error}</p>}
 
       {confirming && <DeleteAccountDialog email={email} close={() => setConfirming(false)} />}
-    </>
+    </section>
   );
 }
 
