@@ -13,5 +13,15 @@ export default defineConfig({
     // ώστε τα stack traces από πραγματικούς χρήστες να είναι διαβάσιμα.
     sourcemap: true,
     target: "es2020",
+    // Οι βιβλιοθήκες σε δικά τους αρχεία: αλλάζουν σπάνια, οπότε ο browser του
+    // χρήστη τις κρατάει και σε κάθε νέα έκδοση κατεβάζει μόνο τον δικό μας κώδικα.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom", "react-dom/client"],
+          supabase: ["@supabase/supabase-js"],
+        },
+      },
+    },
   },
 });

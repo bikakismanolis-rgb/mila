@@ -1,130 +1,44 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+// Το κέλυφος του app: σύνδεση, πλοήγηση, λίστα συνομιλιών, αναζήτηση.
+// Η ανοιχτή συνομιλία είναι στο components/Conversation.tsx, οι ρυθμίσεις στο
+// components/Settings.tsx, η είσοδος στο components/Login.tsx.
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  ArrowLeft,
-  Ban,
-  Check,
-  CheckCheck,
-  Download,
-  FileText,
-  Flag,
-  LockKeyhole,
   LogOut,
   MessageCircle,
-  MoreVertical,
-  Paperclip,
   Search,
-  Send,
   Settings,
-  ShieldCheck,
-  Trash2,
-  TriangleAlert,
   UserPlus,
   UserRound,
+  Users,
   X,
 } from "lucide-react";
 import "./styles.css";
-import { hasSupabaseConfig, supabase } from "./supabase";
-import type {
-  RealtimeChannel,
-  User as SupabaseAuthUser,
-} from "@supabase/supabase-js";
+import { supabase } from "./supabase";
 // Ονομάζεται backend και όχι data, γιατί το `data` χρησιμοποιείται ήδη
 // παντού ως destructured μεταβλητή από τις απαντήσεις του Supabase.
 import * as backend from "./data";
-import type { Chat, Msg, Privacy, User } from "./data";
-import {
-  authRedirectUrl,
-  passwordResetRedirectUrl,
-  privacyPolicyUrl,
-  registerServiceWorker,
-} from "./platform";
+import type { Chat, Msg, User } from "./data";
+import { registerServiceWorker } from "./platform";
 import { bootstrapNative } from "./native";
+import { t, translateError } from "./i18n";
+import { listTime } from "./format";
+import { disablePush, refreshPushOwner } from "./push";
+import { Empty } from "./components/common";
+import { Login } from "./components/Login";
+import { SettingsPanel } from "./components/Settings";
+import {
+  Conversation,
+  chatAvatar,
+  chatTitle,
+  messageSnippet,
+} from "./components/Conversation";
+import { NewGroupDialog } from "./components/Groups";
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as
-  | string
-  | undefined;
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (options: {
-            client_id: string;
-            callback: (response: { credential?: string }) => void;
-          }) => void;
-          renderButton: (
-            parent: HTMLElement,
-            options: {
-              size?: "large" | "medium" | "small";
-              text?: "continue_with" | "signin_with" | "signup_with";
-              theme?: "outline" | "filled_blue" | "filled_black";
-              width?: string | number;
-            },
-          ) => void;
-          prompt: (listener?: (notification: unknown) => void) => void;
-        };
-      };
-    };
-  }
-}
-function loadGoogleIdentityScript() {
-  return new Promise<void>((resolve, reject) => {
-    if (window.google?.accounts?.id) {
-      resolve();
-      return;
-    }
-    const existing = document.querySelector<HTMLScriptElement>(
-      'script[src="https://accounts.google.com/gsi/client"]',
-    );
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Could not load Google Sign-In.")), {
-        once: true,
-      });
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Could not load Google Sign-In."));
-    document.head.appendChild(script);
-  });
-}
-
-async function ensureSupabaseProfile(
-  user: SupabaseAuthUser,
-  displayName?: string,
-) {
-  if (!supabase || !user.email) return;
-  const email = user.email.toLowerCase();
-  const name =
-    displayName?.trim() ||
-    (typeof user.user_metadata?.display_name === "string"
-      ? user.user_metadata.display_name
-      : email.split("@")[0]);
-  const { error } = await supabase.from("profiles").upsert(
-    {
-      id: user.id,
-      email,
-      display_name: name.length >= 2 ? name : email.split("@")[0],
-      bio: "",
-      discover_by_email: "everyone",
-      show_email: "chat",
-      read_receipts: true,
-      show_online: true,
-    },
-    { onConflict: "id" },
-  );
-  if (error) console.warn("Supabase profile sync skipped:", error.message);
-}
-const time = (d: string) =>
-  new Intl.DateTimeFormat(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(d));
+const messageOf = (caught: unknown) =>
+  translateError(caught instanceof Error ? caught.message : String(caught)) ||
+  (caught instanceof Error ? caught.message : t("err.generic"));
 
 function isPasswordRecoveryLink() {
   const search = new URLSearchParams(window.location.search);
@@ -137,331 +51,20 @@ function isPasswordRecoveryLink() {
   );
 }
 
-function SupabaseStatus() {
-  const [status, setStatus] = useState("Checking Supabase connection…"),
-    [ok, setOk] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    if (!hasSupabaseConfig || !supabase) {
-      setStatus("Supabase not configured yet");
-      return;
-    }
-    supabase
-      .from("profiles")
-      .select("id")
-      .limit(1)
-      .then(({ error }) => {
-        if (!alive) return;
-        if (error) {
-          setStatus(`Supabase check failed: ${error.message}`);
-          setOk(false);
-          return;
-        }
-        setStatus("Supabase connected · schema reachable");
-        setOk(true);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  return <div className={`supabase-status ${ok ? "ok" : ""}`}>{status}</div>;
-}
-function Login({
-  done,
-  recoveringPassword,
-  recoveryDone,
-}: {
-  done: (u: User) => void;
-  recoveringPassword: boolean;
-  recoveryDone: () => void;
-}) {
-  const [email, setEmail] = useState(""),
-    [name, setName] = useState(""),
-    [authMode, setAuthMode] = useState<"signin" | "signup">("signin"),
-    [password, setPassword] = useState(""),
-    [newPassword, setNewPassword] = useState(""),
-    [notice, setNotice] = useState(""),
-    [error, setError] = useState("");
-  const googleButtonRef = useRef<HTMLDivElement>(null);
-
-  async function resetPassword() {
-    try {
-      setError("");
-      setNotice("");
-      const normalizedEmail = email.trim().toLowerCase();
-      if (!supabase) throw new Error("Supabase is not configured yet.");
-      if (!normalizedEmail) throw new Error("Enter your email first.");
-      const { error } = await supabase.auth.resetPasswordForEmail(
-        normalizedEmail,
-        { redirectTo: passwordResetRedirectUrl },
-      );
-      if (error) throw error;
-      setNotice("Password reset email sent. Open the link and set a new password.");
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
-
-  async function updateRecoveredPassword() {
-    try {
-      setError("");
-      setNotice("");
-      if (!supabase) throw new Error("Supabase is not configured yet.");
-      if (newPassword.length < 6)
-        throw new Error("Password must be at least 6 characters.");
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      if (error) throw error;
-      sessionStorage.removeItem("mila:password-recovery");
-      window.history.replaceState({}, document.title, window.location.pathname);
-      recoveryDone();
-      done(await backend.getMe());
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
-
-  async function request() {
-    try {
-      setError("");
-      setNotice("");
-      const normalizedEmail = email.trim().toLowerCase();
-      if (!normalizedEmail) throw new Error("Enter a valid email.");
-
-      if (supabase) {
-        if (password.length < 6)
-          throw new Error("Password must be at least 6 characters.");
-
-        if (authMode === "signin") {
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email: normalizedEmail,
-            password,
-          });
-          if (error) throw error;
-          if (!data.session)
-            throw new Error("Supabase did not return a signed-in session.");
-          done(await backend.getMe());
-          return;
-        }
-
-        const { data, error } = await supabase.auth.signUp({
-          email: normalizedEmail,
-          password,
-          options: {
-            data: { display_name: name || undefined },
-            emailRedirectTo: authRedirectUrl,
-          },
-        });
-        if (error) throw error;
-        if (data.session) {
-          if (data.user)
-            await ensureSupabaseProfile(data.user, name || undefined);
-          done(await backend.getMe());
-          return;
-        }
-        setNotice(
-          "Account created. Check your email to confirm your account, then sign in here with your password.",
-        );
-        setAuthMode("signin");
-        setPassword("");
-        return;
-      }
-
-      // Δεν υπάρχει πια εναλλακτική διαδρομή σύνδεσης. Ο παλιός κωδικός
-      // 6 ψηφίων τυπωνόταν στο response του Express — έφυγε μαζί του.
-      throw new Error("Supabase is not configured. Check your environment.");
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
-  async function finishGoogleSignIn(credential?: string) {
-    try {
-      setError("");
-      setNotice("");
-      if (!supabase) throw new Error("Supabase is not configured yet.");
-      if (!credential) throw new Error("Google did not return an ID token.");
-      const { data, error } = await supabase.auth.signInWithIdToken({
-        provider: "google",
-        token: credential,
-      });
-      if (error) throw error;
-      if (!data.session)
-        throw new Error("Supabase did not return a signed-in session.");
-      if (data.user) await ensureSupabaseProfile(data.user);
-      done(await backend.getMe());
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
-  useEffect(() => {
-    if (!supabase || !GOOGLE_CLIENT_ID || !googleButtonRef.current) return;
-    let cancelled = false;
-    loadGoogleIdentityScript()
-      .then(() => {
-        if (cancelled || !googleButtonRef.current) return;
-        googleButtonRef.current.innerHTML = "";
-        window.google!.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: (response) => void finishGoogleSignIn(response.credential),
-        });
-        window.google!.accounts.id.renderButton(googleButtonRef.current, {
-          theme: "outline",
-          size: "large",
-          text: "continue_with",
-          width: 360,
-        });
-      })
-      .catch((e: Error) => setError(e.message));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (recoveringPassword) {
-    return (
-      <main className="login">
-        <section className="login-card">
-          <div className="brandmark">
-            <LockKeyhole />
-          </div>
-          <h1>Set a new password.</h1>
-          <p className="lede">Choose a fresh password for your Mila account.</p>
-          <label>
-            New password
-            <input
-              autoFocus
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="At least 6 characters"
-            />
-          </label>
-          <button onClick={updateRecoveredPassword}>Update password</button>
-          {notice && <p className="notice">{notice}</p>}
-          {error && <p className="error">{error}</p>}
-        </section>
-        <aside>
-          <div className="orb"></div>
-          <h2>Your conversations belong in a messenger, not an inbox.</h2>
-          <p>Realtime chat, requests and privacy controls in one calm place.</p>
-        </aside>
-      </main>
-    );
-  }
-
-  return (
-    <main className="login">
-      <section className="login-card">
-        <div className="brandmark">
-          <MessageCircle />
-        </div>
-        <h1>
-          Talk freely.
-          <br />
-          Keep your number private.
-        </h1>
-        <p className="lede">
-          A familiar messenger, built around your email — not your phone number.
-        </p>
-        <>
-            <label>
-              Email address
-              <input
-                autoFocus
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-              />
-            </label>
-            {supabase && (
-              <label>
-                Password
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={
-                    authMode === "signin"
-                      ? "Your password"
-                      : "At least 6 characters"
-                  }
-                />
-              </label>
-            )}
-            {authMode === "signup" && (
-              <label>
-                Display name <span>(new accounts)</span>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="How people know you"
-                />
-              </label>
-            )}
-            <button onClick={request}>
-              {authMode === "signin" ? "Sign in" : "Create account"}
-            </button>
-            {authMode === "signup" && (
-              <p className="consent">
-                By creating an account you agree to our{" "}
-                <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
-                  privacy policy
-                </a>
-                . Messages are stored on our servers and are not end-to-end
-                encrypted.
-              </p>
-            )}
-            <div className="auth-choice">
-              {authMode === "signin" ? (
-                <>
-                  <span>New here?</span>
-                  <button type="button" onClick={() => setAuthMode("signup")}>
-                    Create account
-                  </button>
-                  <span>·</span>
-                  <button type="button" onClick={resetPassword}>
-                    Forgot password?
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span>Already have an account?</span>
-                  <button type="button" onClick={() => setAuthMode("signin")}>
-                    Sign in
-                  </button>
-                </>
-              )}
-            </div>
-            {supabase && (
-              <>
-                <div className="auth-divider">
-                  <span>or</span>
-                </div>
-                <div className="google-button" ref={googleButtonRef} />
-                {!GOOGLE_CLIENT_ID && (
-                  <p className="error">Google Client ID is missing.</p>
-                )}
-              </>
-            )}
-        </>
-        {notice && <p className="notice">{notice}</p>}
-        {error && <p className="error">{error}</p>}
-        <div className="trust">
-          <ShieldCheck /> Email verified · No phone required
-        </div>
-        <SupabaseStatus />
-      </section>
-      <aside>
-        <div className="orb"></div>
-        <h2>Your conversations belong in a messenger, not an inbox.</h2>
-        <p>Realtime chat, requests and privacy controls in one calm place.</p>
-      </aside>
-    </main>
+/** Η ειδοποίηση ανοίγει το app στο /?c=<id συνομιλίας>. Το διαβάζουμε μία
+ *  φορά και καθαρίζουμε τη διεύθυνση. */
+function takeConversationFromUrl(): string | null {
+  const search = new URLSearchParams(window.location.search);
+  const id = search.get("c");
+  if (!id) return null;
+  search.delete("c");
+  const rest = search.toString();
+  window.history.replaceState(
+    {},
+    document.title,
+    window.location.pathname + (rest ? `?${rest}` : ""),
   );
+  return id;
 }
 
 function App() {
@@ -472,25 +75,68 @@ function App() {
         sessionStorage.getItem("mila:password-recovery") === "1",
     ),
     [chats, setChats] = useState<Chat[]>([]),
-    [active, setActive] = useState<Chat | null>(null),
-    [messages, setMessages] = useState<Msg[]>([]),
+    [activeId, setActiveId] = useState<string | null>(() =>
+      takeConversationFromUrl(),
+    ),
+    // Μόλις φτιάχτηκε και δεν έχει προλάβει να έρθει στη λίστα.
+    [fallbackChat, setFallbackChat] = useState<Chat | null>(null),
     [query, setQuery] = useState(""),
     [results, setResults] = useState<User[]>([]),
+    [imported, setImported] = useState(false),
+    [messageHits, setMessageHits] = useState<Msg[]>([]),
+    [jumpTo, setJumpTo] = useState<string | null>(null),
     [mode, setMode] = useState<"chat" | "search" | "settings">("chat"),
-    [text, setText] = useState(""),
-    [typing, setTyping] = useState(false),
-    [menuOpen, setMenuOpen] = useState(false),
-    [uploading, setUploading] = useState(false),
-    [error, setError] = useState("");
-  const typingChannel = useRef<RealtimeChannel | null>(null),
-    bottom = useRef<HTMLDivElement>(null),
-    fileInput = useRef<HTMLInputElement>(null),
-    contactInput = useRef<HTMLInputElement>(null);
-  const loadChats = () =>
-    backend
-      .listChats()
-      .then(setChats)
-      .catch((e) => setError(e.message));
+    [newGroup, setNewGroup] = useState(false),
+    [blockedVersion, setBlockedVersion] = useState(0),
+    [toast, setToast] = useState("");
+  const contactInput = useRef<HTMLInputElement>(null),
+    loading = useRef(false),
+    loadAgain = useRef(false),
+    activeIdRef = useRef<string | null>(null),
+    pendingOpen = useRef<string | null>(null);
+
+  activeIdRef.current = activeId;
+
+  const notify = useCallback((message: string) => setToast(message), []);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 6000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  // Ένα γεγονός στη βάση (π.χ. «διάβασα 30 μηνύματα») φτάνει εδώ ως 30 events.
+  // Όσο τρέχει ένα φόρτωμα, τα υπόλοιπα μαζεύονται σε ΕΝΑ ακόμα στο τέλος.
+  const loadChats = useCallback(async () => {
+    if (loading.current) {
+      loadAgain.current = true;
+      return;
+    }
+    loading.current = true;
+    try {
+      do {
+        loadAgain.current = false;
+        const fresh = await backend.listChats();
+        setChats(fresh);
+        // Η ανοιχτή συνομιλία δεν υπάρχει πια για μένα (με έβγαλαν από ομάδα,
+        // απέρριψα το request): κλείνει.
+        const open = activeIdRef.current;
+        const found = Boolean(open && fresh.some((c) => c.id === open));
+        if (open && found && pendingOpen.current === open) {
+          pendingOpen.current = null;
+          setFallbackChat(null);
+        }
+        // Εξαίρεση: συνομιλία που ΜΟΛΙΣ έφτιαξα. Ένα φόρτωμα που είχε ξεκινήσει
+        // πριν τη δημιουργία της δεν την περιέχει, και δεν πρέπει να την κλείσει.
+        if (open && !found && pendingOpen.current !== open) setActiveId(null);
+      } while (loadAgain.current);
+    } catch (caught) {
+      notify(messageOf(caught));
+    } finally {
+      loading.current = false;
+    }
+  }, [notify]);
+
+  // Επαναφορά συνεδρίας στο άνοιγμα.
   useEffect(() => {
     let alive = true;
     async function restoreSession() {
@@ -508,15 +154,16 @@ function App() {
         const user = await backend.getMe();
         if (alive) setMe(user);
       } catch (error) {
-        console.warn("Could not restore Supabase session:", error);
+        console.warn("Could not restore session:", error);
         await supabase.auth.signOut();
       }
     }
-    restoreSession();
+    void restoreSession();
     return () => {
       alive = false;
     };
   }, []);
+
   useEffect(() => {
     const client = supabase;
     if (!client) return;
@@ -529,10 +176,11 @@ function App() {
         setMe(null);
         return;
       }
+      // Το callback δεν επιτρέπεται να καλέσει το Supabase απευθείας (κλειδώνει)·
+      // γι' αυτό το setTimeout.
       window.setTimeout(async () => {
         try {
-          const { data: userData } = await client.auth.getUser();
-          if (userData.user) await ensureSupabaseProfile(userData.user);
+          if (event === "SIGNED_IN") await backend.ensureProfile();
           const user = await backend.getMe();
           // Το onAuthStateChange πυροδοτείται και σε TOKEN_REFRESHED και όταν
           // η καρτέλα ξαναπαίρνει focus. Χωρίς αυτόν τον έλεγχο, κάθε φορά
@@ -540,7 +188,7 @@ function App() {
           // και ξαναστηνόταν από την αρχή η σύνδεση realtime.
           if (alive) setMe((prev) => (prev?.id === user.id ? prev : user));
         } catch (error) {
-          console.warn("Could not complete magic-link sign in:", error);
+          console.warn("Could not complete sign in:", error);
         }
       }, 0);
     });
@@ -549,105 +197,121 @@ function App() {
       data.subscription.unsubscribe();
     };
   }, []);
-  // Το subscribeToChanges δεν πρέπει να ξαναστήνεται σε κάθε αλλαγή
-  // συνομιλίας, οπότε το ενεργό id περνάει από ref.
-  const activeId = useRef<string | null>(null);
+
+  // Λίστα συνομιλιών + ζωντανή ενημέρωση, όσο υπάρχει συνδεδεμένος χρήστης.
   useEffect(() => {
     if (!me) return;
-    loadChats();
-    // Το RLS φιλτράρει ήδη τι φτάνει εδώ, οπότε ξαναφορτώνουμε αντί να
-    // μπαλώνουμε το state από το payload του event.
-    const channel = backend.subscribeToChanges({
-      onMessage: () => {
-        loadChats();
-        if (activeId.current)
-          backend.listMessages(activeId.current).then(setMessages).catch(() => {});
-      },
-      onConversation: loadChats,
-    });
-    return () => {
-      void supabase?.removeChannel(channel);
+    void loadChats();
+    void refreshPushOwner();
+    const channel = backend.subscribeToChanges(() => void loadChats());
+    // Μετά από ώρα στο παρασκήνιο το realtime μπορεί να έχει χάσει γεγονότα.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void loadChats();
     };
-  }, [me?.id]);
-  useEffect(() => {
-    activeId.current = active?.id || null;
-    if (typingChannel.current) void supabase?.removeChannel(typingChannel.current);
-    typingChannel.current = null;
-    setTyping(false);
-    if (!active) return;
-    backend.listMessages(active.id).then(setMessages).catch(() => {});
-    backend.markRead(active.id).then(loadChats);
-    typingChannel.current = backend.subscribeToTyping(active.id, (on) =>
-      setTyping(on),
-    );
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
-      if (typingChannel.current)
-        void supabase?.removeChannel(typingChannel.current);
-      typingChannel.current = null;
+      document.removeEventListener("visibilitychange", onVisible);
+      backend.unsubscribe(channel);
     };
-  }, [active?.id]);
-  useEffect(
-    () => bottom.current?.scrollIntoView({ behavior: "smooth" }),
-    [messages, typing],
-  );
+  }, [me?.id, loadChats]);
+
+  // Πάτημα σε ειδοποίηση ενώ το app είναι ήδη ανοιχτό: ο service worker
+  // στέλνει εδώ ποια συνομιλία να ανοίξει.
   useEffect(() => {
-    const t = setTimeout(() => {
-      if (
-        mode === "search" &&
-        query.length > 1 &&
-        query !== "Imported contacts"
-      )
-        backend
-          .searchUsers(query)
-          .then(setResults)
-          .catch(() => setResults([]));
-      else if (query !== "Imported contacts") setResults([]);
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "open-conversation" && event.data.id) {
+        setMode("chat");
+        setActiveId(String(event.data.id));
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () =>
+      navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, []);
+
+  // Αναζήτηση ανθρώπων (καρτέλα «Βρες άτομα»).
+  useEffect(() => {
+    if (mode !== "search" || imported) return;
+    const term = query.trim();
+    if (term.length < 2) {
+      setResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      backend
+        .searchUsers(term)
+        .then(setResults)
+        .catch(() => setResults([]));
     }, 250);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
+  }, [query, mode, imported]);
+
+  // Αναζήτηση μέσα στα μηνύματα (καρτέλα «Μηνύματα»).
+  useEffect(() => {
+    const term = query.trim();
+    if (mode !== "chat" || term.length < 2) {
+      setMessageHits([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      backend
+        .searchMessages(term)
+        .then(setMessageHits)
+        .catch(() => setMessageHits([]));
+    }, 300);
+    return () => clearTimeout(timer);
   }, [query, mode]);
+
+  const active = useMemo(
+    () =>
+      activeId
+        ? chats.find((c) => c.id === activeId) ||
+          (fallbackChat?.id === activeId ? fallbackChat : null)
+        : null,
+    [activeId, chats, fallbackChat],
+  );
+
+  // Ποιους μπορώ να βάλω σε ομάδα: αποδεκτές ατομικές συνομιλίες, όχι
+  // διαγραμμένους, όχι μπλοκαρισμένους. Η βάση ελέγχει ξανά το ίδιο.
+  const contacts = useMemo(
+    () =>
+      chats
+        .filter(
+          (c) =>
+            c.type === "direct" &&
+            c.requestStatus === "accepted" &&
+            !c.blockedByMe &&
+            c.others[0] &&
+            !c.others[0].deleted,
+        )
+        .map((c) => c.others[0] as User)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [chats],
+  );
+
   async function openUser(u: User) {
     try {
       const id = await backend.startChat(u.id);
-      const fresh = await backend.listChats();
-      setChats(fresh);
-      setActive(
-        fresh.find((c) => c.id === id) || {
-          id,
-          type: "direct",
-          others: [u],
-          unread: 0,
-          requestStatus: "pending",
-          createdAt: new Date().toISOString(),
-        },
-      );
+      pendingOpen.current = id;
+      setFallbackChat({
+        id,
+        type: "direct",
+        others: [u],
+        unread: 0,
+        requestFrom: me?.id,
+        requestStatus: "pending",
+        createdAt: new Date().toISOString(),
+      });
+      setActiveId(id);
       setMode("chat");
-    } catch (e: any) {
-      setError(e.message);
+      setQuery("");
+      await loadChats();
+    } catch (caught) {
+      notify(messageOf(caught));
     }
   }
-  async function send() {
-    if (!text.trim() || !active) return;
-    const body = text.trim();
-    setText("");
-    try {
-      await backend.sendMessage(active.id, body);
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
-  async function sendAttachment(file?: File) {
-    if (!file || !active) return;
-    setUploading(true);
-    try {
-      const attachment = await backend.uploadAttachment(file, active.id);
-      await backend.sendMessage(active.id, "", attachment);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setUploading(false);
-      if (fileInput.current) fileInput.current.value = "";
-    }
-  }
+
   async function importContacts(file?: File) {
     if (!file) return;
     try {
@@ -671,46 +335,27 @@ function App() {
         }),
       );
       setResults(await backend.matchContacts(hashes));
+      setImported(true);
+      setQuery("");
       setMode("search");
-      setQuery("Imported contacts");
-    } catch (e: any) {
-      setError(e.message);
+    } catch (caught) {
+      notify(messageOf(caught));
     } finally {
       if (contactInput.current) contactInput.current.value = "";
     }
   }
-  async function blockUser() {
-    if (!other || !confirm(`Block ${other.name}?`)) return;
-    try {
-      await backend.blockUser(other.id);
-      setMenuOpen(false);
-      setActive(null);
-      loadChats();
-    } catch (e: any) {
-      setError(e.message);
-    }
+
+  async function signOut() {
+    // Η συσκευή σταματά να παίρνει ειδοποιήσεις για αυτόν τον λογαριασμό.
+    // Με όριο χρόνου: η αποσύνδεση δεν περιμένει ένα αργό δίκτυο.
+    await Promise.race([
+      disablePush().catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 2500)),
+    ]);
+    await supabase?.auth.signOut();
+    location.reload();
   }
-  async function reportUser() {
-    if (!other) return;
-    const reason = prompt("Briefly describe the problem:");
-    if (!reason) return;
-    try {
-      await backend.reportUser(other.id, reason);
-      setMenuOpen(false);
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
-  async function decide(decision: "accepted" | "rejected") {
-    if (!active) return;
-    try {
-      await backend.respondToRequest(active.id, decision === "accepted");
-      setActive({ ...active, requestStatus: decision });
-      loadChats();
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
+
   if (!me)
     return (
       <Login
@@ -719,7 +364,31 @@ function App() {
         recoveryDone={() => setRecoveringPassword(false)}
       />
     );
-  const other = active?.others?.[0];
+
+  const term = query.trim().toLowerCase();
+  const visibleChats = chats.filter(
+    (c) => !term || chatTitle(c).toLowerCase().includes(term),
+  );
+
+  function chatSubtitle(c: Chat): string {
+    if (c.requestStatus === "pending")
+      return c.requestFrom === me!.id
+        ? t("list.requestSent")
+        : t("list.request");
+    if (!c.last) return t("list.start");
+    const text = messageSnippet(c.last);
+    if (c.last.deleted) return text;
+    if (c.last.senderId === me!.id) return `${t("chat.you")}: ${text}`;
+    if (c.type === "group") {
+      const sender =
+        c.others.find((u) => u.id === c.last!.senderId)?.name ||
+        c.last.senderName ||
+        "";
+      return sender ? `${sender.split(" ")[0]}: ${text}` : text;
+    }
+    return text;
+  }
+
   return (
     <div className="shell">
       <nav>
@@ -729,69 +398,91 @@ function App() {
         <button
           className={mode === "chat" ? "on" : ""}
           onClick={() => setMode("chat")}
-          title="Chats"
+          title={t("nav.chats")}
+          aria-label={t("nav.chats")}
         >
           <MessageCircle />
         </button>
         <button
           className={mode === "search" ? "on" : ""}
           onClick={() => setMode("search")}
-          title="Find people"
+          title={t("nav.find")}
+          aria-label={t("nav.find")}
         >
           <UserPlus />
         </button>
         <button
           className={mode === "settings" ? "on" : ""}
           onClick={() => setMode("settings")}
-          title="Settings"
+          title={t("nav.settings")}
+          aria-label={t("nav.settings")}
         >
           <Settings />
         </button>
         <span />
-        <img src={me.avatar} />
+        <img src={me.avatar} alt="" />
         <button
-          onClick={async () => {
-            await supabase?.auth.signOut();
-            location.reload();
-          }}
-          title="Sign out"
+          onClick={() => void signOut()}
+          title={t("nav.signOut")}
+          aria-label={t("nav.signOut")}
         >
           <LogOut />
         </button>
       </nav>
+
       <aside className={`sidebar ${active ? "mobile-hide" : ""}`}>
         <header>
           <div>
-            <small>EMAIL MESSENGER</small>
+            <small>MILA</small>
             <h2>
               {mode === "search"
-                ? "Find people"
+                ? t("nav.find")
                 : mode === "settings"
-                  ? "Settings"
-                  : "Messages"}
+                  ? t("nav.settings")
+                  : t("nav.chats")}
             </h2>
           </div>
           {mode === "chat" && (
-            <button className="icon" onClick={() => setMode("search")}>
-              <UserPlus />
-            </button>
+            <div className="header-actions">
+              <button
+                className="icon"
+                onClick={() => setNewGroup(true)}
+                title={t("group.new")}
+                aria-label={t("group.new")}
+              >
+                <Users />
+              </button>
+              <button
+                className="icon"
+                onClick={() => setMode("search")}
+                title={t("nav.find")}
+                aria-label={t("nav.find")}
+              >
+                <UserPlus />
+              </button>
+            </div>
           )}
         </header>
+
         {mode !== "settings" && (
           <div className="search">
             <Search />
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setImported(false);
+              }}
               placeholder={
                 mode === "search"
-                  ? "Email, username or name"
-                  : "Search conversations"
+                  ? t("people.searchPlaceholder")
+                  : t("list.searchPlaceholder")
               }
             />
             {query && <X onClick={() => setQuery("")} />}
           </div>
         )}
+
         {mode === "search" && (
           <div className="contact-import">
             <input
@@ -799,517 +490,184 @@ function App() {
               type="file"
               accept=".csv,.vcf,text/csv,text/vcard"
               hidden
-              onChange={(e) => importContacts(e.target.files?.[0])}
+              onChange={(e) => void importContacts(e.target.files?.[0])}
             />
             <button onClick={() => contactInput.current?.click()}>
-              <UserRound /> Import email contacts
+              <UserRound /> {t("people.import")}
             </button>
-            <small>
-              Matching uses SHA-256 email hashes, not the full address book.
-            </small>
+            <small>{t("people.importHint")}</small>
           </div>
         )}
+
         {mode === "search" ? (
           <div className="people">
+            {imported && (
+              <p className="list-title">
+                {t("people.imported", { n: results.length })}
+              </p>
+            )}
             {results.map((u) => (
-              <button key={u.id} onClick={() => openUser(u)}>
-                <img src={u.avatar} />
+              <button key={u.id} onClick={() => void openUser(u)}>
+                <img src={u.avatar} alt="" />
                 <span>
                   <b>{u.name}</b>
                   <small>
-                    @{u.username} · {u.email || "private email"}
+                    {[backend.handleOf(u), u.email || t("people.privateEmail")]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </small>
                 </span>
                 <UserPlus />
               </button>
             ))}
-            {query.length < 2 && !results.length && (
+            {!imported && term.length < 2 && (
               <Empty
                 icon={<Search />}
-                title="Find someone"
-                text="Search by email address, username or name."
+                title={t("people.emptyTitle")}
+                text={t("people.emptyText")}
+              />
+            )}
+            {!imported && term.length >= 2 && !results.length && (
+              <Empty
+                icon={<Search />}
+                title={t("people.noneTitle")}
+                text={t("people.noneText")}
               />
             )}
           </div>
         ) : mode === "settings" ? (
-          <SettingsPanel me={me} saved={setMe} />
+          <SettingsPanel
+            me={me}
+            saved={setMe}
+            signOut={() => void signOut()}
+            blockedVersion={blockedVersion}
+            onUnblocked={() => void loadChats()}
+          />
         ) : (
           <div className="chatlist">
-            {chats
-              .filter(
-                (c) =>
-                  !query ||
-                  c.others[0]?.name.toLowerCase().includes(query.toLowerCase()),
-              )
-              .map((c) => {
-                const u = c.others[0];
-                return (
-                  <button
-                    className={active?.id === c.id ? "active" : ""}
-                    key={c.id}
-                    onClick={() => setActive(c)}
-                  >
-                    <div className="avatar">
-                      <img src={u?.avatar} />
-                      {u?.privacy.online && <i />}
-                    </div>
-                    <span>
-                      <strong>
-                        {u?.name || "Group"}
-                        <time>{c.last && time(c.last.createdAt)}</time>
-                      </strong>
-                      <small>
-                        {c.requestStatus === "pending"
-                          ? "Message request"
-                          : c.last?.body || "Start the conversation"}
-                      </small>
-                    </span>
-                    {c.unread > 0 && <em>{c.unread}</em>}
-                  </button>
-                );
-              })}
+            {visibleChats.map((c) => (
+              <button
+                className={activeId === c.id ? "active" : ""}
+                key={c.id}
+                onClick={() => setActiveId(c.id)}
+              >
+                <div className="avatar">
+                  <img src={chatAvatar(c)} alt="" />
+                </div>
+                <span>
+                  <strong>
+                    <span className="title">{chatTitle(c)}</span>
+                    <time>{c.last && listTime(c.last.createdAt)}</time>
+                  </strong>
+                  <small className={c.last?.deleted ? "muted-italic" : ""}>
+                    {chatSubtitle(c)}
+                  </small>
+                </span>
+                {c.unread > 0 && <em>{c.unread}</em>}
+              </button>
+            ))}
+
+            {messageHits.length > 0 && (
+              <>
+                <p className="list-title">{t("list.inMessages")}</p>
+                {messageHits.map((hit) => {
+                  const chat = chats.find((c) => c.id === hit.conversationId);
+                  if (!chat) return null;
+                  return (
+                    <button
+                      key={hit.id}
+                      onClick={() => {
+                        setActiveId(chat.id);
+                        setJumpTo(hit.id);
+                      }}
+                    >
+                      <div className="avatar">
+                        <img src={chatAvatar(chat)} alt="" />
+                      </div>
+                      <span>
+                        <strong>
+                          <span className="title">{chatTitle(chat)}</span>
+                          <time>{listTime(hit.createdAt)}</time>
+                        </strong>
+                        <small>{messageSnippet(hit)}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
             {!chats.length && (
               <Empty
                 icon={<MessageCircle />}
-                title="No conversations yet"
-                text="Find someone by email and say hello."
+                title={t("list.emptyTitle")}
+                text={t("list.emptyText")}
               />
             )}
+            {chats.length > 0 &&
+              term &&
+              !visibleChats.length &&
+              !messageHits.length && (
+                <Empty
+                  icon={<Search />}
+                  title={t("list.noneTitle")}
+                  text={t("list.noneText")}
+                />
+              )}
           </div>
         )}
       </aside>
+
       <section className={`conversation ${!active ? "mobile-hide" : ""}`}>
-        {active && other ? (
-          <>
-            <header>
-              <button className="icon back" onClick={() => setActive(null)}>
-                <ArrowLeft />
-              </button>
-              <img src={other.avatar} />
-              <div>
-                <b>{other.name}</b>
-                <small>{typing ? "typing…" : `@${other.username}`}</small>
-              </div>
-              <span />
-              <span title="Encryption architecture ready">
-                <LockKeyhole />
-              </span>
-              <div className="conversation-menu">
-                <button
-                  className="icon"
-                  aria-label="Conversation options"
-                  onClick={() => setMenuOpen((open) => !open)}
-                >
-                  <MoreVertical />
-                </button>
-                {menuOpen && (
-                  <div className="menu-popover">
-                    <button
-                      onClick={() =>
-                        alert(`${other.name}\n@${other.username}\n${other.bio}`)
-                      }
-                    >
-                      <UserRound /> Contact details
-                    </button>
-                    <button onClick={blockUser}>
-                      <Ban /> Block user
-                    </button>
-                    <button className="danger" onClick={reportUser}>
-                      <Flag /> Report user
-                    </button>
-                  </div>
-                )}
-              </div>
-            </header>
-            <div className="messages">
-              {active.requestStatus === "pending" &&
-                active.requestFrom !== me.id && (
-                  <div className="request">
-                    <ShieldCheck />
-                    <h3>{other.name} wants to chat</h3>
-                    <p>
-                      Accept to move this conversation into your regular inbox.
-                    </p>
-                    <div>
-                      <button
-                        className="secondary"
-                        onClick={() => decide("rejected")}
-                      >
-                        Decline
-                      </button>
-                      <button onClick={() => decide("accepted")}>Accept</button>
-                    </div>
-                  </div>
-                )}
-              <div className="day">Today</div>
-              {messages.map((m) => (
-                <Bubble key={m.id} m={m} own={m.senderId === me.id} />
-              ))}
-              {typing && (
-                <div className="bubble typing">
-                  <i />
-                  <i />
-                  <i />
-                </div>
-              )}
-              <div ref={bottom} />
-            </div>
-            {active.requestStatus !== "rejected" && (
-              <footer>
-                <input
-                  ref={fileInput}
-                  type="file"
-                  hidden
-                  accept="image/*,.pdf,.txt,.zip,.docx,.xlsx"
-                  onChange={(e) => sendAttachment(e.target.files?.[0])}
-                />
-                <button
-                  className="plus"
-                  title="Send photo or file"
-                  disabled={uploading}
-                  onClick={() => fileInput.current?.click()}
-                >
-                  <Paperclip />
-                </button>
-                <textarea
-                  rows={1}
-                  value={text}
-                  onChange={(e) => {
-                    setText(e.target.value);
-                    void backend.sendTyping(
-                      typingChannel.current,
-                      !!e.target.value,
-                    );
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      send();
-                    }
-                  }}
-                  placeholder={uploading ? "Uploading…" : "Write a message"}
-                />
-                <button className="send" disabled={!text.trim()} onClick={send}>
-                  <Send />
-                </button>
-              </footer>
-            )}
-          </>
+        {active ? (
+          <Conversation
+            me={me}
+            chat={active}
+            contacts={contacts}
+            jumpTo={jumpTo}
+            onJumped={() => setJumpTo(null)}
+            onBack={() => setActiveId(null)}
+            onChanged={() => void loadChats()}
+            onGone={() => {
+              setActiveId(null);
+              void loadChats();
+            }}
+            onBlockChanged={() => {
+              setBlockedVersion((v) => v + 1);
+              void loadChats();
+            }}
+            notify={notify}
+          />
         ) : (
           <Empty
             icon={<MessageCircle />}
-            title="Your messages, in one place"
-            text="Choose a conversation or find someone using their email."
+            title={t("home.title")}
+            text={t("home.text")}
           />
         )}
       </section>
-      {error && (
-        <div className="toast" onClick={() => setError("")}>
-          {error}
+
+      {newGroup && (
+        <NewGroupDialog
+          contacts={contacts}
+          created={(id) => {
+            pendingOpen.current = id;
+            setActiveId(id);
+            void loadChats();
+          }}
+          close={() => setNewGroup(false)}
+        />
+      )}
+
+      {toast && (
+        <div className="toast" onClick={() => setToast("")} role="status">
+          {toast}
         </div>
       )}
     </div>
   );
 }
-function Bubble({ m, own }: { m: Msg; own: boolean }) {
-  // Το url είναι πλέον βραχύβιο signed URL από το Supabase Storage,
-  // φτιαγμένο στο data.ts — δεν χρειάζεται token εδώ.
-  const mediaUrl = m.attachment?.url || "";
-  return (
-    <div className={`bubble ${own ? "own" : ""}`}>
-      {m.encrypted && <LockKeyhole size={12} />}
-      {m.attachment?.mime.startsWith("image/") ? (
-        <a href={mediaUrl} target="_blank" rel="noreferrer">
-          <img
-            className="message-image"
-            src={mediaUrl}
-            alt={m.attachment.name}
-          />
-        </a>
-      ) : m.attachment ? (
-        <a
-          className="file-card"
-          href={mediaUrl}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <FileText />
-          <span>
-            <b>{m.attachment.name}</b>
-            <small>{(m.attachment.size / 1024).toFixed(1)} KB</small>
-          </span>
-        </a>
-      ) : null}
-      {m.body && <p>{m.encrypted ? "π”’ Encrypted message" : m.body}</p>}
-      <small>
-        {time(m.createdAt)}{" "}
-        {own && (m.readBy.length > 1 ? <CheckCheck /> : <Check />)}
-      </small>
-    </div>
-  );
-}
-function Empty({
-  icon,
-  title,
-  text,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  text: string;
-}) {
-  return (
-    <div className="empty">
-      <div>{icon}</div>
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </div>
-  );
-}
-function SettingsPanel({ me, saved }: { me: User; saved: (u: User) => void }) {
-  const [name, setName] = useState(me.name),
-    [bio, setBio] = useState(me.bio),
-    [privacy, setPrivacy] = useState(me.privacy);
-  async function save() {
-    saved(await backend.updateMe({ name, bio, privacy }));
-  }
-  return (
-    <div className="settings">
-      <div className="profile">
-        <img src={me.avatar} />
-        <b>{me.name}</b>
-        <small>{me.email}</small>
-      </div>
-      <AccountSection email={me.email || ""} />
-      <label>
-        Display name
-        <input value={name} onChange={(e) => setName(e.target.value)} />
-      </label>
-      <label>
-        Bio
-        <textarea value={bio} onChange={(e) => setBio(e.target.value)} />
-      </label>
-      <h3>Privacy</h3>
-      <label>
-        Find me by email
-        <select
-          value={privacy.discover}
-          onChange={(e) =>
-            setPrivacy({
-              ...privacy,
-              discover: e.target.value as Privacy["discover"],
-            })
-          }
-        >
-          <option value="everyone">Everyone</option>
-          <option value="contacts">Contacts</option>
-          <option value="nobody">Nobody</option>
-        </select>
-      </label>
-      <label className="toggle">
-        <span>
-          Read receipts<small>Let people know when you read messages</small>
-        </span>
-        <input
-          type="checkbox"
-          checked={privacy.receipts}
-          onChange={(e) =>
-            setPrivacy({ ...privacy, receipts: e.target.checked })
-          }
-        />
-      </label>
-      <label className="toggle">
-        <span>
-          Online status<small>Show when you are available</small>
-        </span>
-        <input
-          type="checkbox"
-          checked={privacy.online}
-          onChange={(e) => setPrivacy({ ...privacy, online: e.target.checked })}
-        />
-      </label>
-      <button onClick={save}>Save changes</button>
-      <p className="storage-note">
-        <ShieldCheck size={14} /> Messages are stored on our servers and are not
-        end-to-end encrypted. Your email is never shared without your say-so,
-        and we never ask for a phone number.
-      </p>
-    </div>
-  );
-}
 
-// Ό,τι αφορά τον ίδιο τον λογαριασμό, χωριστά από τις ρυθμίσεις. Και τα δύο
-// stores απαιτούν να είναι εδώ: χωρίς πραγματική διαγραφή λογαριασμού μέσα
-// στην εφαρμογή, το app απορρίπτεται στον έλεγχο.
-function AccountSection({ email }: { email: string }) {
-  const [confirming, setConfirming] = useState(false),
-    [exporting, setExporting] = useState(false),
-    [passwordOpen, setPasswordOpen] = useState(false),
-    [newPassword, setNewPassword] = useState(""),
-    [savingPassword, setSavingPassword] = useState(false),
-    [notice, setNotice] = useState(""),
-    [error, setError] = useState("");
-
-  async function changePassword() {
-    setError("");
-    setNotice("");
-    if (newPassword.length < 6) {
-      setError("Password must be at least 6 characters.");
-      return;
-    }
-    setSavingPassword(true);
-    try {
-      const { error } = await supabase!.auth.updateUser({
-        password: newPassword,
-      });
-      if (error) throw error;
-      setNewPassword("");
-      setPasswordOpen(false);
-      setNotice("Password updated.");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Password update failed.");
-    } finally {
-      setSavingPassword(false);
-    }
-  }
-
-  async function exportData() {
-    setError("");
-    setNotice("");
-    setExporting(true);
-    try {
-      const payload = await backend.exportMyData();
-      const blob = new Blob([JSON.stringify(payload, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `mila-data-${new Date().toISOString().slice(0, 10)}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Export failed.");
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  return (
-    <section className="account-section">
-      <h3>Your account</h3>
-      <p className="hint">
-        <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
-          Read our privacy policy
-        </a>{" "}
-        — what we keep, and what stays behind if you leave.
-      </p>
-      <button
-        className="secondary"
-        type="button"
-        onClick={() => setPasswordOpen((open) => !open)}
-      >
-        <LockKeyhole size={15} />
-        Change password
-      </button>
-      {passwordOpen && (
-        <div className="password-change">
-          <label>
-            New password
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="At least 6 characters"
-            />
-          </label>
-          <button onClick={changePassword} disabled={savingPassword}>
-            {savingPassword ? "Saving…" : "Save new password"}
-          </button>
-        </div>
-      )}
-      <button className="secondary" onClick={exportData} disabled={exporting}>
-        <Download size={15} />
-        {exporting ? "Preparing…" : "Download my data"}
-      </button>
-      <p className="hint">
-        A JSON file with your profile, your conversations and every message you
-        sent. Nothing is deleted.
-      </p>
-
-      <button className="danger" onClick={() => setConfirming(true)}>
-        <Trash2 size={15} />
-        Delete my account
-      </button>
-      {notice && <p className="notice">{notice}</p>}
-      {error && <p className="error">{error}</p>}
-
-      {confirming && <DeleteAccountDialog email={email} close={() => setConfirming(false)} />}
-    </section>
-  );
-}
-
-function DeleteAccountDialog({ email, close }: { email: string; close: () => void }) {
-  const [typed, setTyped] = useState(""),
-    [working, setWorking] = useState(false),
-    [error, setError] = useState("");
-  const armed = typed.trim().toUpperCase() === "DELETE";
-
-  async function confirm() {
-    if (!armed || working) return;
-    setError("");
-    setWorking(true);
-    try {
-      await backend.deleteMyAccount();
-      // Ο λογαριασμός δεν υπάρχει πια, άρα ούτε το state. Καθαρό reload είναι
-      // πιο ασφαλές από το να ξηλώνουμε το δέντρο του React με το χέρι.
-      location.reload();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Deletion failed.");
-      setWorking(false);
-    }
-  }
-
-  return (
-    <div className="modal-backdrop" onClick={working ? undefined : close}>
-      <div className="modal danger-modal" onClick={(e) => e.stopPropagation()}>
-        <h2>
-          <TriangleAlert size={18} /> Delete your account
-        </h2>
-        <p>
-          This cannot be undone. <b>{email}</b> will be released and you will not
-          be able to sign back in.
-        </p>
-        <ul className="consequences">
-          <li>Your login, password and Google connection are erased.</li>
-          <li>Your name, photo and profile details are erased.</li>
-          <li>
-            Messages you already sent stay in the other person&rsquo;s chat,
-            shown as sent by a deleted user.
-          </li>
-        </ul>
-        <label>
-          Type <b>DELETE</b> to confirm
-          <input
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            autoFocus
-            disabled={working}
-            placeholder="DELETE"
-          />
-        </label>
-        {error && <p className="error">{error}</p>}
-        <div className="modal-actions">
-          <button className="ghost" onClick={close} disabled={working}>
-            Keep my account
-          </button>
-          <button className="danger" onClick={confirm} disabled={!armed || working}>
-            {working ? "Deleting…" : "Delete permanently"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 // Χωρίς error boundary, ένα exception στο render ξηλώνει όλο το δέντρο και
 // αφήνει λευκή σελίδα χωρίς κανένα ίχνος. Εδώ τουλάχιστον φαίνεται το τι.
 class ErrorBoundary extends React.Component<
@@ -1330,10 +688,8 @@ class ErrorBoundary extends React.Component<
     if (!this.state.error) return this.props.children;
     return (
       <div style={{ padding: 24, fontFamily: "system-ui", maxWidth: 720 }}>
-        <h2>Something broke while rendering.</h2>
-        <p>
-          Copy this and send it over — it says exactly what failed and where.
-        </p>
+        <h2>{t("crash.title")}</h2>
+        <p>{t("crash.text")}</p>
         <pre
           style={{
             background: "#faf0f2",
@@ -1348,7 +704,7 @@ class ErrorBoundary extends React.Component<
           {"\n\n"}
           {this.state.error.stack}
         </pre>
-        <button onClick={() => location.reload()}>Reload</button>
+        <button onClick={() => location.reload()}>{t("crash.reload")}</button>
       </div>
     );
   }
