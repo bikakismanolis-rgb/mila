@@ -109,7 +109,12 @@
       <table>
         <tr>
           <th>Your email address</th>
-          <td>How you sign in, and how other people find you. Required.</td>
+          <td>
+            How you sign in, and how other people find you. Required. Other
+            users see it only after you have accepted a conversation with them,
+            and you can hide it from everyone in settings. Searching by part of
+            an address is not possible; someone has to type the whole address.
+          </td>
         </tr>
         <tr>
           <th>Your password</th>
@@ -124,15 +129,16 @@
         </tr>
         <tr>
           <th>Your messages and attachments</th>
-          <td>The content of what you send, stored until you or the recipient delete it.</td>
+          <td>
+            The content of what you send, the reactions people add, and which
+            group conversations you are in. Stored until the sender deletes a
+            message &ldquo;for everyone&rdquo;, which erases its text and files from our
+            servers. &ldquo;Delete for me&rdquo; only hides a message from your own view.
+          </td>
         </tr>
         <tr>
           <th>Delivery and read receipts</th>
           <td>When a message reached someone and when they opened it. You can turn read receipts off in settings.</td>
-        </tr>
-        <tr>
-          <th>Online status</th>
-          <td>Whether you are currently using the app. You can turn this off in settings.</td>
         </tr>
         <tr>
           <th>Contact matching (only if you ask for it)</th>
@@ -143,6 +149,15 @@
           </td>
         </tr>
         <tr>
+          <th>Notification address (only if you turn notifications on)</th>
+          <td>
+            A delivery address for each device, issued by your browser&rsquo;s push
+            service, plus the keys needed to encrypt notifications for that
+            device. Removed when you turn notifications off, sign out, or delete
+            your account.
+          </td>
+        </tr>
+        <tr>
           <th>Blocks and reports</th>
           <td>Who you blocked, and any abuse reports you filed or that named you.</td>
         </tr>
@@ -150,7 +165,8 @@
 
       <p>
         We do not collect your phone number, your contacts list, your location,
-        your device identifiers, or your browsing activity. There is no
+        or your browsing activity, and no device identifiers beyond the
+        notification address described above. There is no
         advertising in Mila and no analytics or tracking code on this page.
       </p>
 
@@ -185,7 +201,7 @@
           <td>
             Database, authentication and file storage. Your account, profile,
             messages and attachments live here. Region:
-            <span class="todo">[SUPABASE REGION]</span>.
+            Frankfurt, Germany (EU).
           </td>
         </tr>
         <tr>
@@ -201,6 +217,15 @@
           <td>Only if you choose Google Sign-In. Google confirms your identity to us; we receive your email address and name.</td>
         </tr>
         <tr>
+          <th>Your browser&rsquo;s push service (Google, Apple, Mozilla or Microsoft)</th>
+          <td>
+            Only if you turn notifications on. Notifications travel through the
+            service built into your browser or phone. The content is encrypted
+            for your device before it leaves us, so the service can see that a
+            notification was sent and when, but not what it says.
+          </td>
+        </tr>
+        <tr>
           <th>DiceBear</th>
           <td>
             Generates the placeholder avatar shown when you have not uploaded a
@@ -213,7 +238,7 @@
       <h2>How long we keep it</h2>
       <p>
         Your account and profile stay until you delete them. Messages stay until
-        deleted by you or the person you sent them to. Abuse reports are kept
+        the person who sent them deletes them for everyone. Abuse reports are kept
         after account deletion, without identifying details, because a safety
         record that vanishes when the reported person leaves is not a safety
         record.
@@ -229,7 +254,8 @@
         <li>Your login, password and Google connection.</li>
         <li>Your email address — it is released and someone else could register it.</li>
         <li>Your display name, username, bio and profile photo.</li>
-        <li>Your block list and any files you uploaded but never sent.</li>
+        <li>Your block list, your reactions, and your notification addresses.</li>
+        <li>Your membership of any group conversations.</li>
       </ul>
       <h3>What is not</h3>
       <p>
