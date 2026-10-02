@@ -9,6 +9,8 @@
     "dev": "npm run dev -w @email-messenger/web",
     "build": "npm run build -w @email-messenger/web",
     "typecheck": "npm run typecheck -w @email-messenger/web",
+    "test:db": "bash scripts/test-db.sh",
+    "test:push": "node scripts/test-webpush.mjs",
     "preview": "npm run preview -w @email-messenger/web",
     "sync": "npm run build && npx cap sync",
     "android": "npm run sync && npx cap open android",

@@ -1,0 +1,65 @@
+/* Κοινό στυλ για τις σελίδες /privacy και /terms (και τις ελληνικές τους). */
+
+:root {
+  --purple: #6557e8;
+  --ink: #20202a;
+  --muted: #6b6779;
+  --line: #e9e8ef;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0 20px calc(70px + env(safe-area-inset-bottom));
+  font: 400 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: #fff;
+}
+main { max-width: 720px; margin: 0 auto; }
+header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: calc(36px + env(safe-area-inset-top)) 0 8px;
+}
+header img { width: 46px; height: 46px; border-radius: 14px; }
+header b { font-size: 19px; font-weight: 700; }
+header nav { margin-left: auto; font-size: 15px; }
+h1 { font-size: 30px; line-height: 1.2; margin: 22px 0 6px; letter-spacing: -0.5px; }
+h2 { font-size: 19px; margin: 38px 0 10px; letter-spacing: -0.2px; }
+h3 { font-size: 16px; margin: 24px 0 6px; }
+p, li { color: #35323f; }
+li { margin-bottom: 6px; }
+.updated { color: var(--muted); font-size: 14px; margin: 0 0 6px; }
+a { color: var(--purple); }
+table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 15px; }
+th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; width: 34%; }
+.callout {
+  border: 1px solid #f0d9a8;
+  background: #fffaef;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin: 20px 0;
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout p:first-child { margin-top: 0; }
+.todo {
+  background: #fdecef;
+  border: 1px dashed #e2919f;
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  color: #a32d40;
+}
+footer {
+  margin-top: 50px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 14px;
+}
+@media (max-width: 560px) {
+  th, td { display: block; width: 100%; padding: 4px 0; border: 0; }
+  tr { display: block; padding: 10px 0; border-bottom: 1px solid var(--line); }
+}

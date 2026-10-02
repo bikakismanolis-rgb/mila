@@ -863,7 +863,7 @@ function Bubble({
           </p>
         ) : (
           <>
-            {m.attachment?.mime.startsWith("image/") ? (
+            {m.attachment && backend.isInlineImage(m.attachment.mime) ? (
               <a href={mediaUrl} target="_blank" rel="noreferrer">
                 <img
                   className="message-image"

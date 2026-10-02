@@ -8,6 +8,7 @@ import { supabase } from "./supabase";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { t, translateError } from "./i18n";
 import type { TKey } from "./i18n";
+import { avatarOf, GROUP_COLOR, initialsAvatar } from "./avatar";
 
 export type Privacy = {
   discover: "everyone" | "contacts" | "nobody";
@@ -92,6 +93,63 @@ export type NewAttachment = {
 
 const BUCKET = "message-media";
 const MAX_UPLOAD = 15 * 1024 * 1024;
+
+/**
+ * Οι τύποι αρχείων που δέχεται το storage (ίδια λίστα με το migration 0010).
+ * Οτιδήποτε άλλο ανεβαίνει ως application/octet-stream: ο browser το κατεβάζει
+ * και δεν το ανοίγει ποτέ σαν σελίδα. Έτσι ένα .html ή ένα .svg με κώδικα δεν
+ * γίνεται ποτέ ζωντανή σελίδα πάνω στο domain της Supabase.
+ */
+const UPLOAD_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "image/heic",
+  "image/heif",
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "audio/mpeg",
+  "audio/mp4",
+  "audio/aac",
+  "audio/ogg",
+  "audio/webm",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "application/octet-stream",
+]);
+
+/** Εικόνες που δείχνει κάθε browser μέσα στη συνομιλία. Οι υπόλοιπες (π.χ.
+ *  HEIC, που ο Chrome δεν ανοίγει) εμφανίζονται ως αρχείο για κατέβασμα. */
+const INLINE_IMAGES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+]);
+
+export const isInlineImage = (mime: string | undefined) =>
+  Boolean(mime && INLINE_IMAGES.has(mime));
+
+/** Ελάχιστο μήκος για ΝΕΟ κωδικό. Η σύνδεση με παλιό, μικρότερο κωδικό δεν
+ *  ελέγχεται εδώ: το αποφασίζει η Supabase. Το ίδιο όριο πρέπει να έχει και η
+ *  ρύθμιση Authentication → Providers → Email → Minimum password length. */
+export const MIN_PASSWORD = 8;
+
 /** Πόσα μηνύματα έρχονται ανά σελίδα. Ίδιο με το default του list_messages. */
 export const PAGE_SIZE = 50;
 
@@ -112,16 +170,18 @@ async function currentUserId(): Promise<string> {
   return data.user.id;
 }
 
-const dicebear = (seed: string) =>
-  `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(seed)}&backgroundColor=6d5dfc`;
-
 /** «@username», ή τίποτα αν δεν υπάρχει. */
 export const handleOf = (user: { username: string | null }) =>
   user.username ? `@${user.username}` : "";
 
-/** Εικονίδιο ομάδας: ίδια υπηρεσία, άλλο χρώμα, ώστε να ξεχωρίζει με μια ματιά. */
+/** Εικονίδιο ομάδας: ίδια αρχικά, άλλο χρώμα, ώστε να ξεχωρίζει με μια ματιά. */
 export const groupAvatar = (name: string) =>
-  `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(name || "?")}&backgroundColor=272634`;
+  initialsAvatar(name || "?", GROUP_COLOR);
+
+/** Κάθε άνθρωπος που έρχεται από τη βάση περνάει από εδώ πριν φτάσει στην οθόνη. */
+function withAvatar<T extends User>(user: T): T {
+  return { ...user, avatar: avatarOf(user) };
+}
 
 type ProfileRow = {
   id: string;
@@ -146,7 +206,7 @@ function toUser(row: ProfileRow): User {
       row.email.split("@")[0].replace(/[^a-z0-9_.]/g, "") ||
       "user",
     bio: row.bio || "",
-    avatar: row.avatar_path || dicebear(row.display_name),
+    avatar: avatarOf({ name: row.display_name, avatar: row.avatar_path }),
     privacy: {
       discover: row.discover_by_email,
       showEmail: row.show_email,
@@ -233,7 +293,7 @@ export async function deleteMyAccount(): Promise<void> {
   const { error } = await db().rpc("delete_my_account");
   if (error) fail("err.deleteAccount", error);
   await db()
-    .auth.signOut()
+    .auth.signOut({ scope: "local" })
     .catch(() => undefined);
 }
 
@@ -248,7 +308,7 @@ export async function searchUsers(term: string): Promise<User[]> {
     search_term: trimmed,
   });
   if (error) fail("err.search", error);
-  return (data || []) as User[];
+  return ((data || []) as User[]).map(withAvatar);
 }
 
 export async function matchContacts(hashes: string[]): Promise<User[]> {
@@ -257,7 +317,7 @@ export async function matchContacts(hashes: string[]): Promise<User[]> {
     email_hashes: hashes.slice(0, 500),
   });
   if (error) fail("err.matchContacts", error);
-  return (data || []) as User[];
+  return ((data || []) as User[]).map(withAvatar);
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +327,9 @@ export async function matchContacts(hashes: string[]): Promise<User[]> {
 // Ο bucket message-media είναι private, οπότε κάθε συνημμένο θέλει
 // βραχύβιο signed URL. Τα ζητάμε μαζεμένα για να μη γίνει ένα request
 // ανά μήνυμα.
+//
+// Ό,τι δεν είναι εικόνα παίρνει «download» στο URL: το storage το σερβίρει ως
+// αρχείο για κατέβασμα (Content-Disposition: attachment), όχι ως σελίδα.
 async function withSignedUrls(messages: Msg[]): Promise<Msg[]> {
   const paths = messages
     .map((m) => m.attachment?.path)
@@ -282,15 +345,17 @@ async function withSignedUrls(messages: Msg[]): Promise<Msg[]> {
     if (item.path && item.signedUrl) urls.set(item.path, item.signedUrl);
   }
 
+  const urlFor = (attachment: Attachment) => {
+    const url = urls.get(attachment.path);
+    if (!url) return "";
+    return isInlineImage(attachment.mime)
+      ? url
+      : `${url}&download=${encodeURIComponent(attachment.name || "file")}`;
+  };
+
   return messages.map((m) =>
     m.attachment?.path
-      ? {
-          ...m,
-          attachment: {
-            ...m.attachment,
-            url: urls.get(m.attachment.path) || "",
-          },
-        }
+      ? { ...m, attachment: { ...m.attachment, url: urlFor(m.attachment) } }
       : m,
   );
 }
@@ -308,21 +373,20 @@ export async function uploadAttachment(
   // Ο πρώτος φάκελος ΠΡΕΠΕΙ να είναι το uid: το απαιτούν το policy του storage
   // και το send_message, που δεν δέχεται αρχείο από ξένο φάκελο.
   const path = `${uid}/${conversationId}/${crypto.randomUUID()}.${extension}`;
+  const mime = UPLOAD_TYPES.has(file.type) ? file.type : "application/octet-stream";
 
   const { error } = await db()
     .storage.from(BUCKET)
-    .upload(path, file, {
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-    });
-  if (error) fail("err.upload", error);
+    .upload(path, file, { contentType: mime, upsert: false });
+  if (error) {
+    // Το storage απαντάει «row-level security» όταν φτάσει το όριο ανεβασμάτων
+    // της ημέρας (ή όταν ο λογαριασμός είναι σε αναστολή).
+    if (/row-level security|unauthorized/i.test(error.message))
+      throw new Error(t("err.uploadLimit"));
+    fail("err.upload", error);
+  }
 
-  return {
-    path,
-    name: file.name.slice(0, 180),
-    mime: file.type || "application/octet-stream",
-    size: file.size,
-  };
+  return { path, name: file.name.slice(0, 180), mime, size: file.size };
 }
 
 /** Σβήνει αρχεία από το storage. Best-effort: αν αποτύχει, μένει ορφανό αρχείο
@@ -340,7 +404,10 @@ async function removeFiles(paths: string[]): Promise<void> {
 export async function listChats(): Promise<Chat[]> {
   const { data, error } = await db().rpc("list_conversations");
   if (error) fail("err.loadChats", error);
-  return (data || []) as Chat[];
+  return ((data || []) as Chat[]).map((chat) => ({
+    ...chat,
+    others: chat.others.map(withAvatar),
+  }));
 }
 
 /**
@@ -538,7 +605,7 @@ export async function unblockUser(userId: string): Promise<void> {
 export async function listBlocked(): Promise<User[]> {
   const { data, error } = await db().rpc("list_blocked");
   if (error) fail("err.loadBlocked", error);
-  return (data || []) as User[];
+  return ((data || []) as User[]).map(withAvatar);
 }
 
 export async function reportUser(
