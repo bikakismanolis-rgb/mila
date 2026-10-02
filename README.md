@@ -91,7 +91,7 @@ The step-by-step list, in Greek, is `docs/NEXT-STEPS.md`. In short:
 1. Apply migration `0010_launch_hardening.sql`.
 2. Custom SMTP. The built-in Supabase mailer only delivers to organisation members and allows two messages an hour.
 3. Turn "Confirm email" on, and set the minimum password length to 8.
-4. Fill in the controller's name, address, country and contact email in the four legal pages.
+4. Fill in the controller's name and contact email in the four legal pages.
 
 Done in code: rate limits, storage quota and file-type allowlist, RLS tests,
 moderation tooling, push notifications, privacy policy and terms, security
