@@ -14,6 +14,17 @@ import {
   Users,
   X,
 } from "lucide-react";
+// Οι γραμματοσειρές σερβίρονται από το ίδιο το app. Πριν έρχονταν από τη
+// Google Fonts, που σημαίνει ότι κάθε άνοιγμα του Mila έστελνε την IP του
+// χρήστη στη Google (για αυτό ακριβώς έχουν καταδικαστεί sites στην ΕΕ).
+// Μόνο τα βάρη που χρησιμοποιεί το styles.css.
+import "@fontsource/dm-sans/400.css";
+import "@fontsource/dm-sans/500.css";
+import "@fontsource/dm-sans/600.css";
+import "@fontsource/dm-sans/700.css";
+import "@fontsource/manrope/600.css";
+import "@fontsource/manrope/700.css";
+import "@fontsource/manrope/800.css";
 import "./styles.css";
 import { supabase } from "./supabase";
 // Ονομάζεται backend και όχι data, γιατί το `data` χρησιμοποιείται ήδη
@@ -155,7 +166,7 @@ function App() {
         if (alive) setMe(user);
       } catch (error) {
         console.warn("Could not restore session:", error);
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: "local" });
       }
     }
     void restoreSession();
@@ -352,7 +363,10 @@ function App() {
       disablePush().catch(() => undefined),
       new Promise((resolve) => setTimeout(resolve, 2500)),
     ]);
-    await supabase?.auth.signOut();
+    // Μόνο αυτή η συσκευή. Το default της Supabase («global») έβγαζε τον
+    // χρήστη από ΟΛΕΣ τις συσκευές του: αποσύνδεση στο laptop = αποσύνδεση
+    // και στο κινητό.
+    await supabase?.auth.signOut({ scope: "local" });
     location.reload();
   }
 

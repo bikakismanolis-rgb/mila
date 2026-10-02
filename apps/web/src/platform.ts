@@ -43,10 +43,12 @@ export const authRedirectUrl: string =
 export const passwordResetRedirectUrl = `${authRedirectUrl}/?resetPassword=1`;
 
 /**
- * Το privacy policy. Πάντα απόλυτο URL: μέσα σε Capacitor ένα σκέτο "/privacy"
- * θα έψαχνε αρχείο μέσα στο bundle του app, που δεν υπάρχει εκεί.
+ * Πολιτική απορρήτου και όροι χρήσης, στη γλώσσα του χρήστη. Πάντα απόλυτο URL:
+ * μέσα σε Capacitor ένα σκέτο "/privacy" θα έψαχνε αρχείο μέσα στο bundle του
+ * app, που δεν υπάρχει εκεί.
  */
-export const privacyPolicyUrl = `${publicSiteUrl}/privacy`;
+export const legalUrl = (page: "privacy" | "terms", language: "el" | "en") =>
+  `${publicSiteUrl}/${page}${language === "el" ? "/el" : ""}`;
 
 /** Δηλώνει τον service worker. Μόνο σε browser production build. */
 export function registerServiceWorker(): void {

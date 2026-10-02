@@ -7,8 +7,8 @@ import * as backend from "../data";
 import type { User } from "../data";
 import {
   authRedirectUrl,
+  legalUrl,
   passwordResetRedirectUrl,
-  privacyPolicyUrl,
 } from "../platform";
 import { lang, setLang, t, translateError } from "../i18n";
 
@@ -180,7 +180,8 @@ export function Login({
   const updateRecoveredPassword = () =>
     attempt(async () => {
       if (!supabase) throw new Error(t("err.notConfigured"));
-      if (newPassword.length < 6) throw new Error(t("err.passwordShort"));
+      if (newPassword.length < backend.MIN_PASSWORD)
+        throw new Error(t("err.passwordShort"));
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
       });
@@ -196,7 +197,7 @@ export function Login({
       const normalizedEmail = email.trim().toLowerCase();
       if (!supabase) throw new Error(t("err.notConfigured"));
       if (!normalizedEmail) throw new Error(t("login.enterValidEmail"));
-      if (password.length < 6) throw new Error(t("err.passwordShort"));
+      if (!password) throw new Error(t("login.enterPassword"));
 
       if (authMode === "signin") {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -210,6 +211,8 @@ export function Login({
         return;
       }
 
+      if (password.length < backend.MIN_PASSWORD)
+        throw new Error(t("err.passwordShort"));
       const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
@@ -363,7 +366,11 @@ export function Login({
         {authMode === "signup" && (
           <p className="consent">
             {t("login.consentBefore")}{" "}
-            <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
+            <a href={legalUrl("terms", lang)} target="_blank" rel="noopener noreferrer">
+              {t("login.terms")}
+            </a>{" "}
+            {t("login.consentAnd")}{" "}
+            <a href={legalUrl("privacy", lang)} target="_blank" rel="noopener noreferrer">
               {t("login.privacyPolicy")}
             </a>
             . {t("login.consentAfter")}

@@ -71,13 +71,16 @@ const en = {
   "login.email": "Email address",
   "login.password": "Password",
   "login.yourPassword": "Your password",
-  "login.passwordHint": "At least 6 characters",
+  "login.passwordHint": "At least 8 characters",
   "login.displayName": "Display name",
   "login.displayNameNote": "(new accounts)",
   "login.displayNameHint": "How people know you",
   "login.signIn": "Sign in",
   "login.createAccount": "Create account",
-  "login.consentBefore": "By creating an account you agree to our",
+  "login.consentBefore":
+    "By creating an account you confirm you are 16 or older and agree to our",
+  "login.terms": "terms of use",
+  "login.consentAnd": "and",
   "login.privacyPolicy": "privacy policy",
   "login.consentAfter":
     "Messages are stored on our servers and are not end-to-end encrypted.",
@@ -96,6 +99,7 @@ const en = {
   "login.updatePassword": "Update password",
   "login.enterEmailFirst": "Enter your email first.",
   "login.enterValidEmail": "Enter a valid email.",
+  "login.enterPassword": "Enter your password.",
   "login.resetSent":
     "Password reset email sent. Open the link and set a new password.",
   "login.accountCreated":
@@ -244,6 +248,7 @@ const en = {
   "account.title": "Your account",
   "account.readPolicy": "Read our privacy policy",
   "account.readPolicyAfter": "— what we keep, and what stays behind if you leave.",
+  "account.readTerms": "Terms of use",
   "account.changePassword": "Change password",
   "account.savePassword": "Save new password",
   "account.passwordUpdated": "Password updated.",
@@ -281,10 +286,20 @@ const en = {
     "Confirm your email first — open the link we sent you, then sign in.",
   "err.alreadyRegistered":
     "There is already an account with this email. Sign in instead.",
-  "err.passwordShort": "Password must be at least 6 characters.",
+  "err.passwordShort": "Password must be at least 8 characters.",
   "err.samePassword": "Choose a password different from your current one.",
   "err.rateLimitSeconds": "Too many attempts. Try again in {n} seconds.",
   "err.rateLimit": "Too many attempts. Please wait a little and try again.",
+  "err.tooFast": "You're sending very fast. Wait a minute and try again.",
+  "err.requestPending":
+    "You can send more once they accept your request.",
+  "err.tooManyChats":
+    "You've started a lot of new conversations today. Try again tomorrow.",
+  "err.tooManyGroups": "You've created a lot of groups today. Try again tomorrow.",
+  "err.tooManyReports":
+    "You've sent a lot of reports today. We'll look at the ones we have.",
+  "err.suspended":
+    "This account has been suspended for breaking the terms of use. If you think this is a mistake, contact us.",
   "err.loadProfile": "Could not load your profile.",
   "err.saveProfile": "Could not save your profile.",
   "err.export": "Could not export your data.",
@@ -294,6 +309,9 @@ const en = {
   "err.matchContacts": "Could not match your contacts.",
   "err.fileTooLarge": "That file is larger than the 15 MB limit.",
   "err.upload": "Upload failed.",
+  "err.uploadLimit":
+    "You've uploaded a lot of files today. Try again tomorrow.",
+  "err.attachmentMissing": "The file didn't finish uploading. Please try again.",
   "err.loadChats": "Could not load your conversations.",
   "err.loadMessages": "Could not load these messages.",
   "err.startChat": "Could not start that conversation.",
@@ -345,13 +363,16 @@ const el: Record<TKey, string> = {
   "login.email": "Διεύθυνση email",
   "login.password": "Κωδικός",
   "login.yourPassword": "Ο κωδικός σου",
-  "login.passwordHint": "Τουλάχιστον 6 χαρακτήρες",
+  "login.passwordHint": "Τουλάχιστον 8 χαρακτήρες",
   "login.displayName": "Όνομα",
   "login.displayNameNote": "(για νέους λογαριασμούς)",
   "login.displayNameHint": "Πώς θα σε βλέπουν οι άλλοι",
   "login.signIn": "Σύνδεση",
   "login.createAccount": "Δημιουργία λογαριασμού",
-  "login.consentBefore": "Δημιουργώντας λογαριασμό συμφωνείς με την",
+  "login.consentBefore":
+    "Δημιουργώντας λογαριασμό δηλώνεις ότι είσαι τουλάχιστον 16 ετών και συμφωνείς με τους",
+  "login.terms": "όρους χρήσης",
+  "login.consentAnd": "και την",
   "login.privacyPolicy": "πολιτική απορρήτου",
   "login.consentAfter":
     "Τα μηνύματα αποθηκεύονται στους servers μας και δεν είναι κρυπτογραφημένα από άκρη σε άκρη.",
@@ -370,6 +391,7 @@ const el: Record<TKey, string> = {
   "login.updatePassword": "Αλλαγή κωδικού",
   "login.enterEmailFirst": "Γράψε πρώτα το email σου.",
   "login.enterValidEmail": "Γράψε ένα έγκυρο email.",
+  "login.enterPassword": "Γράψε τον κωδικό σου.",
   "login.resetSent":
     "Σου στείλαμε email για αλλαγή κωδικού. Άνοιξε τον σύνδεσμο και όρισε νέο κωδικό.",
   "login.accountCreated":
@@ -518,6 +540,7 @@ const el: Record<TKey, string> = {
   "account.title": "Ο λογαριασμός σου",
   "account.readPolicy": "Διάβασε την πολιτική απορρήτου",
   "account.readPolicyAfter": "— τι κρατάμε, και τι μένει πίσω αν φύγεις.",
+  "account.readTerms": "Όροι χρήσης",
   "account.changePassword": "Αλλαγή κωδικού",
   "account.savePassword": "Αποθήκευση νέου κωδικού",
   "account.passwordUpdated": "Ο κωδικός άλλαξε.",
@@ -555,10 +578,20 @@ const el: Record<TKey, string> = {
     "Επιβεβαίωσε πρώτα το email σου — άνοιξε τον σύνδεσμο που σου στείλαμε, και μετά συνδέσου.",
   "err.alreadyRegistered":
     "Υπάρχει ήδη λογαριασμός με αυτό το email. Κάνε σύνδεση.",
-  "err.passwordShort": "Ο κωδικός θέλει τουλάχιστον 6 χαρακτήρες.",
+  "err.passwordShort": "Ο κωδικός θέλει τουλάχιστον 8 χαρακτήρες.",
   "err.samePassword": "Διάλεξε κωδικό διαφορετικό από τον τωρινό.",
   "err.rateLimitSeconds": "Πολλές προσπάθειες. Δοκίμασε ξανά σε {n} δευτερόλεπτα.",
   "err.rateLimit": "Πολλές προσπάθειες. Περίμενε λίγο και δοκίμασε ξανά.",
+  "err.tooFast": "Στέλνεις πολύ γρήγορα. Περίμενε ένα λεπτό και ξαναδοκίμασε.",
+  "err.requestPending":
+    "Θα μπορείς να στείλεις κι άλλα όταν δεχτεί το αίτημά σου.",
+  "err.tooManyChats":
+    "Ξεκίνησες πολλές νέες συνομιλίες σήμερα. Δοκίμασε ξανά αύριο.",
+  "err.tooManyGroups": "Έφτιαξες πολλές ομάδες σήμερα. Δοκίμασε ξανά αύριο.",
+  "err.tooManyReports":
+    "Έστειλες πολλές αναφορές σήμερα. Θα εξετάσουμε όσες έχουμε ήδη.",
+  "err.suspended":
+    "Ο λογαριασμός έχει ανασταλεί επειδή παραβίασε τους όρους χρήσης. Αν νομίζεις ότι έγινε λάθος, επικοινώνησε μαζί μας.",
   "err.loadProfile": "Δεν φόρτωσε το προφίλ σου.",
   "err.saveProfile": "Το προφίλ σου δεν αποθηκεύτηκε.",
   "err.export": "Η εξαγωγή των δεδομένων σου απέτυχε.",
@@ -568,6 +601,9 @@ const el: Record<TKey, string> = {
   "err.matchContacts": "Δεν έγινε η αντιστοίχιση των επαφών σου.",
   "err.fileTooLarge": "Το αρχείο ξεπερνά το όριο των 15 MB.",
   "err.upload": "Το ανέβασμα απέτυχε.",
+  "err.uploadLimit":
+    "Ανέβασες πολλά αρχεία σήμερα. Δοκίμασε ξανά αύριο.",
+  "err.attachmentMissing": "Το αρχείο δεν ανέβηκε ολόκληρο. Δοκίμασε ξανά.",
   "err.loadChats": "Δεν φόρτωσαν οι συνομιλίες σου.",
   "err.loadMessages": "Δεν φόρτωσαν τα μηνύματα.",
   "err.startChat": "Η συνομιλία δεν ξεκίνησε.",
@@ -614,6 +650,15 @@ const KNOWN_ERRORS: Array<[RegExp, TKey]> = [
   [/already registered|already been registered/i, "err.alreadyRegistered"],
   [/password should be at least/i, "err.passwordShort"],
   [/should be different from the old password/i, "err.samePassword"],
+  // Τα όρια του migration 0010. Πριν από το γενικό «rate limit» από κάτω.
+  [/too many messages/i, "err.tooFast"],
+  [/wait until your request is accepted/i, "err.requestPending"],
+  [/too many new conversations/i, "err.tooManyChats"],
+  [/too many new groups/i, "err.tooManyGroups"],
+  [/too many reports/i, "err.tooManyReports"],
+  [/user is banned/i, "err.suspended"],
+  [/attachment not found/i, "err.attachmentMissing"],
+  [/exceeded the maximum allowed size|payload too large/i, "err.fileTooLarge"],
   [/rate limit|too many requests/i, "err.rateLimit"],
   [/failed to fetch|networkerror|load failed|network request failed/i, "err.network"],
   [/cannot send messages to this conversation/i, "err.cannotSend"],

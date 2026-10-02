@@ -11,7 +11,7 @@
  * κάτω μέρος του αρχείου.
  */
 
-const VERSION = "mila-v2";
+const VERSION = "mila-v3";
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -94,6 +94,14 @@ const TEXT = GREEK
   ? { fallback: "Νέο μήνυμα", request: "Νέο αίτημα συνομιλίας", file: "Συνημμένο" }
   : { fallback: "New message", request: "New message request", file: "Attachment" };
 
+// Safari (iPhone, iPad, Mac) ΑΚΥΡΩΝΕΙ τη συνδρομή μιας συσκευής αν λίγα push στη
+// σειρά δεν εμφανίσουν ειδοποίηση — και ο χρήστης δεν το μαθαίνει ποτέ, απλώς
+// σταματάει να παίρνει ειδοποιήσεις. Όλοι οι browsers στο iOS είναι Safari από
+// κάτω, γι' αυτό μετράει το AppleWebKit και όχι το όνομα του browser.
+const STRICT_PUSH =
+  /AppleWebKit/.test(self.navigator.userAgent) &&
+  !/Chrome\/|Chromium\/|Edg\//.test(self.navigator.userAgent);
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -108,20 +116,35 @@ self.addEventListener("push", (event) => {
         type: "window",
         includeUncontrolled: true,
       });
-      // Το app είναι ανοιχτό και μπροστά: το μήνυμα φαίνεται ήδη στην οθόνη,
-      // η ειδοποίηση θα ήταν θόρυβος.
-      if (windows.some((w) => w.visibilityState === "visible" && w.focused)) return;
-
       const body =
         data.body ||
         (data.hasAttachment ? TEXT.file : data.isRequest ? TEXT.request : TEXT.fallback);
+      // Ίδιο tag ανά συνομιλία: δέκα μηνύματα από τον ίδιο άνθρωπο δεν
+      // γίνονται δέκα ειδοποιήσεις, η καινούργια αντικαθιστά την παλιά.
+      const tag = data.conversationId || "mila";
+
+      // Το app είναι ανοιχτό και μπροστά: το μήνυμα φαίνεται ήδη στην οθόνη,
+      // η ειδοποίηση θα ήταν θόρυβος. Στο Safari πρέπει παρ' όλα αυτά να
+      // «εμφανιστεί» μία (αλλιώς χάνεται η συνδρομή): τη δείχνουμε αθόρυβα και
+      // την κλείνουμε αμέσως.
+      if (windows.some((w) => w.visibilityState === "visible" && w.focused)) {
+        if (!STRICT_PUSH) return;
+        await self.registration.showNotification(data.title || "Mila", {
+          body,
+          tag,
+          silent: true,
+          data: { conversationId: data.conversationId || null },
+        });
+        const shown = await self.registration.getNotifications({ tag });
+        shown.forEach((notification) => notification.close());
+        return;
+      }
+
       await self.registration.showNotification(data.title || "Mila", {
         body,
         icon: "/icons/icon-192.png",
         badge: "/icons/icon-192.png",
-        // Ίδιο tag ανά συνομιλία: δέκα μηνύματα από τον ίδιο άνθρωπο δεν
-        // γίνονται δέκα ειδοποιήσεις, η καινούργια αντικαθιστά την παλιά.
-        tag: data.conversationId || "mila",
+        tag,
         renotify: true,
         data: { conversationId: data.conversationId || null },
       });

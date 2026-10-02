@@ -14,7 +14,7 @@ import {
 import { supabase } from "../supabase";
 import * as backend from "../data";
 import type { Privacy, User } from "../data";
-import { privacyPolicyUrl } from "../platform";
+import { legalUrl } from "../platform";
 import { lang, setLang, t, translateError } from "../i18n";
 import type { Lang } from "../i18n";
 import { disablePush, enablePush, pushState } from "../push";
@@ -301,7 +301,7 @@ function AccountSection({ email }: { email: string }) {
   async function changePassword() {
     setError("");
     setNotice("");
-    if (newPassword.length < 6) {
+    if (newPassword.length < backend.MIN_PASSWORD) {
       setError(t("err.passwordShort"));
       return;
     }
@@ -347,10 +347,15 @@ function AccountSection({ email }: { email: string }) {
     <section className="account-section">
       <h3>{t("account.title")}</h3>
       <p className="hint">
-        <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
+        <a href={legalUrl("privacy", lang)} target="_blank" rel="noopener noreferrer">
           {t("account.readPolicy")}
         </a>{" "}
         {t("account.readPolicyAfter")}
+      </p>
+      <p className="hint">
+        <a href={legalUrl("terms", lang)} target="_blank" rel="noopener noreferrer">
+          {t("account.readTerms")}
+        </a>
       </p>
       <button
         className="secondary"
