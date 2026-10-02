@@ -7,76 +7,19 @@
     <meta name="description" content="What Mila collects, why, and what you can do about it." />
     <meta name="theme-color" content="#6557e8" />
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
-    <style>
-      :root {
-        --purple: #6557e8;
-        --ink: #20202a;
-        --muted: #6b6779;
-        --line: #e9e8ef;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        padding: 0 20px calc(70px + env(safe-area-inset-bottom));
-        font: 400 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
-        color: var(--ink);
-        background: #fff;
-      }
-      main { max-width: 720px; margin: 0 auto; }
-      header {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: calc(36px + env(safe-area-inset-top)) 0 8px;
-      }
-      header img { width: 46px; height: 46px; border-radius: 14px; }
-      header b { font-size: 19px; font-weight: 700; }
-      h1 { font-size: 30px; line-height: 1.2; margin: 22px 0 6px; letter-spacing: -0.5px; }
-      h2 { font-size: 19px; margin: 38px 0 10px; letter-spacing: -0.2px; }
-      h3 { font-size: 16px; margin: 24px 0 6px; }
-      p, li { color: #35323f; }
-      li { margin-bottom: 6px; }
-      .updated { color: var(--muted); font-size: 14px; margin: 0 0 6px; }
-      a { color: var(--purple); }
-      table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 15px; }
-      th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-      th { font-weight: 600; width: 34%; }
-      .callout {
-        border: 1px solid #f0d9a8;
-        background: #fffaef;
-        border-radius: 12px;
-        padding: 16px 18px;
-        margin: 20px 0;
-      }
-      .callout p:last-child { margin-bottom: 0; }
-      .callout p:first-child { margin-top: 0; }
-      .todo {
-        background: #fdecef;
-        border: 1px dashed #e2919f;
-        border-radius: 6px;
-        padding: 1px 7px;
-        font-family: ui-monospace, "SF Mono", Menlo, monospace;
-        font-size: 13px;
-        color: #a32d40;
-      }
-      footer {
-        margin-top: 50px;
-        padding-top: 20px;
-        border-top: 1px solid var(--line);
-        color: var(--muted);
-        font-size: 14px;
-      }
-    </style>
+    <link rel="alternate" hreflang="el" href="/privacy/el" />
+    <link rel="stylesheet" href="/legal.css" />
   </head>
   <body>
     <main>
       <header>
         <img src="/icons/icon-192.png" alt="" />
         <b>Mila</b>
+        <nav><a href="/privacy/el" lang="el">Ελληνικά</a></nav>
       </header>
 
       <h1>Privacy policy</h1>
-      <p class="updated">Last updated: 4 August 2026</p>
+      <p class="updated">Last updated: 2 October 2026</p>
 
       <p>
         Mila is a messenger that uses your email address instead of your phone
@@ -89,8 +32,9 @@
           <b>Your messages are not end-to-end encrypted.</b> They are stored on
           our database server as ordinary text. That means we are technically
           able to read them, and so is anyone who obtains access to the database.
-          We do not read them as a matter of practice, but we will not pretend to
-          a protection we have not built. Do not use Mila for anything that would
+          We do not read them as a matter of practice. The one exception is
+          described under &ldquo;Reports&rdquo; below. We will not pretend to a
+          protection we have not built. Do not use Mila for anything that would
           harm you if it were exposed.
         </p>
       </div>
@@ -124,7 +68,7 @@
           </td>
         </tr>
         <tr>
-          <th>Display name, username, bio, photo</th>
+          <th>Display name, username, bio</th>
           <td>Whatever you choose to put on your profile. All optional except the name.</td>
         </tr>
         <tr>
@@ -161,33 +105,57 @@
           <th>Blocks and reports</th>
           <td>Who you blocked, and any abuse reports you filed or that named you.</td>
         </tr>
+        <tr>
+          <th>Moderation records</th>
+          <td>
+            If your account is suspended for breaking the
+            <a href="/terms">terms of use</a>: when it happened and a short note
+            saying why.
+          </td>
+        </tr>
       </table>
 
       <p>
         We do not collect your phone number, your contacts list, your location,
         or your browsing activity, and no device identifiers beyond the
-        notification address described above. There is no
-        advertising in Mila and no analytics or tracking code on this page.
+        notification address described above. There is no advertising in Mila
+        and no analytics or tracking code. Profile pictures are drawn on your
+        device from your initials, and the app&rsquo;s fonts are served by us, so
+        opening Mila does not tell any font or avatar service who you are.
       </p>
 
       <h2>Why we are allowed to hold it</h2>
       <ul>
         <li>
-          <b>To provide the service you asked for</b> (GDPR Article 6(1)(b)) —
+          <b>To provide the service you asked for</b> (GDPR Article 6(1)(b)):
           your account, your profile, your conversations. Without this there is
           no app.
         </li>
         <li>
           <b>Our legitimate interest in keeping the service safe</b> (Article
-          6(1)(f)) — blocks, abuse reports, and rate limiting exist so that
-          people can use Mila without being harassed.
+          6(1)(f)): blocks, abuse reports, limits on how much an account can
+          send, and account suspensions exist so that people can use Mila
+          without being harassed or spammed.
         </li>
         <li>
-          <b>Your consent</b> (Article 6(1)(a)) — contact matching only runs when
+          <b>Your consent</b> (Article 6(1)(a)): contact matching only runs when
           you explicitly start it, and you can withdraw at any time by not
           running it again.
         </li>
       </ul>
+
+      <h2>Reports</h2>
+      <p>
+        If you report someone, we receive the account you reported and the
+        reason you give. The person you reported is not told who reported them.
+        To decide what to do, we may read the conversation between you and that
+        account. That is the only situation in which we read messages.
+      </p>
+      <p>
+        If an account breaks our terms, we can delete its messages and suspend
+        it. If we find content that the law requires us to report, such as
+        child sexual abuse material, we report it to the authorities.
+      </p>
 
       <h2>Who else touches your data</h2>
       <p>
@@ -214,7 +182,13 @@
         </tr>
         <tr>
           <th>Google</th>
-          <td>Only if you choose Google Sign-In. Google confirms your identity to us; we receive your email address and name.</td>
+          <td>
+            When we offer Google Sign-In, the button on the sign-in page is
+            loaded from Google, so Google sees your IP address and browser when
+            that page opens. If you choose to sign in with Google, Google also
+            confirms your identity to us and we receive your email address and
+            name.
+          </td>
         </tr>
         <tr>
           <th>Your browser&rsquo;s push service (Google, Apple, Mozilla or Microsoft)</th>
@@ -225,14 +199,6 @@
             notification was sent and when, but not what it says.
           </td>
         </tr>
-        <tr>
-          <th>DiceBear</th>
-          <td>
-            Generates the placeholder avatar shown when you have not uploaded a
-            photo. Your display name is included in the image request. Upload a
-            photo if you would rather it were not.
-          </td>
-        </tr>
       </table>
 
       <h2>How long we keep it</h2>
@@ -241,7 +207,8 @@
         the person who sent them deletes them for everyone. Abuse reports are kept
         after account deletion, without identifying details, because a safety
         record that vanishes when the reported person leaves is not a safety
-        record.
+        record. A suspended account stays suspended until we lift the
+        suspension or the account is deleted.
       </p>
 
       <h2>Deleting your account</h2>
@@ -252,8 +219,8 @@
       <h3>What is erased</h3>
       <ul>
         <li>Your login, password and Google connection.</li>
-        <li>Your email address — it is released and someone else could register it.</li>
-        <li>Your display name, username, bio and profile photo.</li>
+        <li>Your email address. It is released and someone else could register it.</li>
+        <li>Your display name, username and bio.</li>
         <li>Your block list, your reactions, and your notification addresses.</li>
         <li>Your membership of any group conversations.</li>
       </ul>
@@ -275,11 +242,11 @@
         exercise the first two yourself, in the app, right now.
       </p>
       <ul>
-        <li><b>Access and portability</b> — Settings → Your account → Download my data gives you everything we hold about you as a JSON file.</li>
-        <li><b>Erasure</b> — the delete button above, or write to us for the harder version.</li>
-        <li><b>Rectification</b> — edit your profile, or ask us.</li>
-        <li><b>Objection and restriction</b> — you can object to processing based on our legitimate interest.</li>
-        <li><b>Complaint</b> — you can complain to your national data protection authority. In Greece this is the Hellenic Data Protection Authority (<a href="https://www.dpa.gr">dpa.gr</a>). You do not need to go through us first.</li>
+        <li><b>Access and portability</b>: Settings → Your account → Download my data gives you everything we hold about you as a JSON file.</li>
+        <li><b>Erasure</b>: the delete button above, or write to us for the harder version.</li>
+        <li><b>Rectification</b>: edit your profile, or ask us.</li>
+        <li><b>Objection and restriction</b>: you can object to processing based on our legitimate interest.</li>
+        <li><b>Complaint</b>: you can complain to your national data protection authority. In Greece this is the Hellenic Data Protection Authority (<a href="https://www.dpa.gr">dpa.gr</a>). You do not need to go through us first.</li>
       </ul>
 
       <h2>Children</h2>
@@ -292,9 +259,12 @@
       <h2>Security</h2>
       <p>
         Traffic is encrypted in transit. Access to the database is governed by
-        row-level rules so that one account cannot read another's conversations.
-        Passwords are hashed. As stated at the top, message content is not
-        encrypted at rest, which is the most important limitation on this page.
+        row-level rules so that one account cannot read another's conversations,
+        and those rules are tested automatically before every change. Passwords
+        are hashed. Accounts are limited in how many messages, requests and files
+        they can send, which slows down spam. As stated at the top, message
+        content is not encrypted at rest, which is the most important limitation
+        on this page.
       </p>
 
       <h2>Changes</h2>
@@ -306,7 +276,7 @@
 
       <footer>
         <p>
-          Mila · <a href="/">Back to the app</a>
+          Mila · <a href="/terms">Terms of use</a> · <a href="/">Back to the app</a>
         </p>
       </footer>
     </main>
