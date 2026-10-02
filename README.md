@@ -49,6 +49,30 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 - Photo and file attachments up to 15 MB
 - Consent-based CSV and vCard contact matching using email hashes
 - Privacy settings and a responsive mobile and desktop UI
+- Group conversations, replies, reactions, message search, delete for me or for everyone
+- Web Push notifications
+- Rate limits, account suspension and a moderation toolkit (`docs/MODERATION.md`)
+- Privacy policy and terms of use in Greek and English, at `/privacy` and `/terms`
+
+## Tests
+
+```bash
+npm run typecheck
+npm run test:db     # every migration, then 82 security checks, on a local Postgres
+npm run test:push   # the Web Push encryption against the RFC 8291 test vector
+```
+
+`test:db` needs a plain Postgres it can create a database in (it drops and
+recreates `mila_test`), configured through the usual `PGHOST`, `PGPORT`,
+`PGUSER` and `PGPASSWORD`. `supabase/tests/supabase_shim.sql` stands in for the
+parts of Supabase the migrations expect: the roles, `auth.uid()`, the storage
+schema and `pg_net`. Never point it at the real project.
+
+The security checks play out two people talking and a third account trying to
+get in: reading, sending, joining, reacting, deleting, forging receipts,
+attaching someone else's file, reaching the push keys or the moderation schema.
+They also cover the rate limits, suspension and account deletion. GitHub runs
+all three commands on every push (`.github/workflows/ci.yml`).
 
 ## Security status
 
@@ -62,14 +86,17 @@ Adding real end-to-end encryption means key agreement, identity verification, fo
 
 ## Before launch
 
-1. Custom SMTP. The built-in Supabase mailer only delivers to organisation members and allows two messages an hour.
-2. Turn "Confirm email" back on. It is off for local testing, which lets anyone register an address they do not own.
-3. Rate limiting on message sending and signups.
-4. RLS tests covering two conversation members plus an unrelated account.
-5. Upload scanning, storage quotas and retention.
-6. Abuse review tooling for the reports table.
-7. Accessibility audit, privacy policy and terms.
-8. Push notifications. A messenger that cannot tell you a message arrived is a website you have to remember to visit.
+The step-by-step list, in Greek, is `docs/NEXT-STEPS.md`. In short:
+
+1. Apply migration `0010_launch_hardening.sql`.
+2. Custom SMTP. The built-in Supabase mailer only delivers to organisation members and allows two messages an hour.
+3. Turn "Confirm email" on, and set the minimum password length to 8.
+4. Fill in the controller's name, address, country and contact email in the four legal pages.
+
+Done in code: rate limits, storage quota and file-type allowlist, RLS tests,
+moderation tooling, push notifications, privacy policy and terms, security
+headers. Still open: upload virus scanning, CAPTCHA on signup, error
+monitoring, an accessibility audit.
 
 ## Account deletion
 

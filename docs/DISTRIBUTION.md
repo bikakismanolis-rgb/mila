@@ -79,10 +79,10 @@ Chromium, οπότε ο installer βγαίνει γύρω στα 5 MB αντί �
 Χρειάζεται να λέει τι μαζεύεις (email, μηνύματα, συνημμένα), πού
 αποθηκεύεται (Supabase) και πώς διαγράφεται.
 
-**Push notifications.** Δεν υπάρχουν καθόλου. Ένας messenger που δεν σε
-ειδοποιεί όταν έρθει μήνυμα δεν είναι messenger — είναι σελίδα που πρέπει
-να θυμάσαι να ανοίξεις. Θέλει Firebase Cloud Messaging, `@capacitor/push-notifications`,
-και μια Supabase Edge Function που στέλνει το push όταν γράφεται μήνυμα.
+**Push notifications στα native.** Στον browser και στο εγκατεστημένο PWA
+δουλεύουν (Web Push, migration 0009). Μέσα στο Capacitor δεν υπάρχει Web Push:
+θέλει Firebase Cloud Messaging, `@capacitor/push-notifications`, και επέκταση
+της Edge Function `push` ώστε να στέλνει και εκεί.
 
 **Google Sign-In στα native.** Τώρα φορτώνεται το `accounts.google.com/gsi/client`,
 δηλαδή το web SDK. Μέσα σε native WebView η Google το μπλοκάρει από
@@ -91,9 +91,11 @@ Chromium, οπότε ο installer βγαίνει γύρω στα 5 MB αντί �
 Το email + password δουλεύει κανονικά παντού, οπότε δεν είναι blocker για
 πρώτη κυκλοφορία — απλά μη διαφημίσεις το κουμπί Google στα stores.
 
-**Content moderation & blocking.** Υπάρχουν ήδη `blocks` και `reports` στη
-βάση, που είναι καλό: η Apple ζητάει μηχανισμό αναφοράς για κάθε app με
-user-generated content. Βεβαιώσου ότι είναι προσβάσιμα από το UI.
+**Content moderation & blocking.** Η Apple (Guideline 1.2) ζητάει για κάθε app
+με περιεχόμενο χρηστών: όρους χρήσης με μηδενική ανοχή σε καταχρηστική
+συμπεριφορά (`/terms`, και ο χρήστης τους αποδέχεται στην εγγραφή), αναφορά
+και μπλοκάρισμα μέσα από την εφαρμογή (μενού της συνομιλίας), και έγκαιρη
+αντίδραση σε αναφορές (`docs/MODERATION.md`). Υπάρχουν όλα.
 
 ## Πώς φτάνει μια αλλαγή στους χρήστες
 
