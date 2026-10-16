@@ -1733,3 +1733,21 @@ button {
   letter-spacing: 0.06em;
   color: var(--ink);
 }
+
+/* «Συνέχεια με Google»: δικό μας κουμπί, ώστε η Google να μη φορτώνει πριν το
+   ζητήσεις. Μοιάζει με το outline κουμπί της. */
+.google-start {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto;
+  height: 44px;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  background: #fff;
+  color: #3c4043;
+  font-weight: 500;
+}
+.google-start:disabled {
+  opacity: 0.6;
+}

@@ -149,6 +149,10 @@ export function Login({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const googleButtonRef = useRef<HTMLDivElement>(null);
+  // Το script της Google φορτώνει ΜΟΝΟ όταν πατήσεις «Συνέχεια με Google».
+  // Πριν, φόρτωνε σε κάθε άνοιγμα της σελίδας εισόδου, άρα η Google μάθαινε
+  // την IP όποιου έμπαινε στο Mila, ακόμα κι αν δεν τη χρησιμοποιούσε ποτέ.
+  const [google, setGoogle] = useState<"idle" | "loading" | "ready">("idle");
 
   async function attempt(action: () => Promise<void>) {
     if (busy) return;
@@ -243,32 +247,34 @@ export function Login({
       done(await backend.getMe());
     });
 
-  useEffect(() => {
-    if (!supabase || !GOOGLE_CLIENT_ID || !googleButtonRef.current) return;
-    let cancelled = false;
-    loadGoogleIdentityScript()
-      .then(() => {
-        if (cancelled || !googleButtonRef.current) return;
-        googleButtonRef.current.innerHTML = "";
-        window.google!.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: (response) => void finishGoogleSignIn(response.credential),
-        });
-        window.google!.accounts.id.renderButton(googleButtonRef.current, {
-          theme: "outline",
-          size: "large",
-          text: "continue_with",
-          width: 360,
-          locale: lang,
-        });
-      })
-      .catch((caught: Error) => setError(caught.message));
-    return () => {
-      cancelled = true;
-    };
-    // Το κουμπί της Google στήνεται μία φορά. Το callback δεν εξαρτάται από state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  async function startGoogle() {
+    if (!supabase || !GOOGLE_CLIENT_ID || google !== "idle") return;
+    setGoogle("loading");
+    setError("");
+    try {
+      await loadGoogleIdentityScript();
+      const target = googleButtonRef.current;
+      if (!target) return;
+      target.innerHTML = "";
+      window.google!.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (response) => void finishGoogleSignIn(response.credential),
+      });
+      // Το πραγματικό κουμπί της Google. Η σύνδεση γίνεται μόνο από δικό της
+      // κουμπί (δικό της iframe), γι' αυτό χρειάζεται ένα δεύτερο πάτημα.
+      window.google!.accounts.id.renderButton(target, {
+        theme: "outline",
+        size: "large",
+        text: "continue_with",
+        width: 360,
+        locale: lang,
+      });
+      setGoogle("ready");
+    } catch (caught) {
+      setGoogle("idle");
+      setError(messageOf(caught));
+    }
+  }
 
   if (recoveringPassword) {
     return (
@@ -395,7 +401,18 @@ export function Login({
             <div className="auth-divider">
               <span>{t("login.or")}</span>
             </div>
+            {google !== "ready" && (
+              <button
+                type="button"
+                className="google-start"
+                onClick={() => void startGoogle()}
+                disabled={google === "loading"}
+              >
+                {google === "loading" ? t("common.loading") : t("login.googleContinue")}
+              </button>
+            )}
             <div className="google-button" ref={googleButtonRef} />
+            {google === "ready" && <p className="hint">{t("login.googleHint")}</p>}
           </>
         )}
         {notice && <p className="notice">{notice}</p>}
