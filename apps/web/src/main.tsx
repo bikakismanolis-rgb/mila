@@ -14,6 +14,13 @@ import {
   Users,
   X,
 } from "lucide-react";
+import "@fontsource/dm-sans/400.css";
+import "@fontsource/dm-sans/500.css";
+import "@fontsource/dm-sans/600.css";
+import "@fontsource/dm-sans/700.css";
+import "@fontsource/manrope/600.css";
+import "@fontsource/manrope/700.css";
+import "@fontsource/manrope/800.css";
 import "./styles.css";
 import { supabase } from "./supabase";
 // Ονομάζεται backend και όχι data, γιατί το `data` χρησιμοποιείται ήδη
@@ -201,7 +208,12 @@ function App() {
   // Λίστα συνομιλιών + ζωντανή ενημέρωση, όσο υπάρχει συνδεδεμένος χρήστης.
   useEffect(() => {
     if (!me) return;
-    void loadChats();
+    // Τα κλειδιά κρυπτογράφησης αυτής της συσκευής: φτιάχνονται (την πρώτη
+    // φορά) και δηλώνονται πριν φορτώσει η λίστα, που θέλει να τα χρησιμοποιήσει.
+    backend
+      .ensureDevice()
+      .catch((caught) => notify(messageOf(caught)))
+      .finally(() => void loadChats());
     void refreshPushOwner();
     const channel = backend.subscribeToChanges(() => void loadChats());
     // Μετά από ώρα στο παρασκήνιο το realtime μπορεί να έχει χάσει γεγονότα.
@@ -238,14 +250,22 @@ function App() {
       setResults([]);
       return;
     }
-    const timer = setTimeout(() => {
-      backend
-        .searchUsers(term)
-        .then(setResults)
-        .catch(() => setResults([]));
-    }, 250);
+    // Αναζήτηση με ολόκληρο email μετράει στο όριο του server· περιμένουμε να
+    // σταματήσει να γράφει, για να μη μετρήσει κάθε γράμμα του «.com».
+    const timer = setTimeout(
+      () => {
+        backend
+          .searchUsers(term)
+          .then(setResults)
+          .catch((caught) => {
+            setResults([]);
+            notify(messageOf(caught));
+          });
+      },
+      backend.looksLikeEmail(term) ? 700 : 250,
+    );
     return () => clearTimeout(timer);
-  }, [query, mode, imported]);
+  }, [query, mode, imported, notify]);
 
   // Αναζήτηση μέσα στα μηνύματα (καρτέλα «Μηνύματα»).
   useEffect(() => {
@@ -527,13 +547,22 @@ function App() {
                 text={t("people.emptyText")}
               />
             )}
-            {!imported && term.length >= 2 && !results.length && (
-              <Empty
-                icon={<Search />}
-                title={t("people.noneTitle")}
-                text={t("people.noneText")}
-              />
-            )}
+            {!imported &&
+              term.length >= 2 &&
+              !results.length &&
+              (backend.looksLikeEmail(term) ? (
+                <Empty
+                  icon={<Search />}
+                  title={t("people.noneTitle")}
+                  text={t("people.noneText")}
+                />
+              ) : (
+                <Empty
+                  icon={<Search />}
+                  title={t("people.keepTyping")}
+                  text={t("people.keepTypingText")}
+                />
+              ))}
           </div>
         ) : mode === "settings" ? (
           <SettingsPanel

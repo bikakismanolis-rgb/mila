@@ -17,6 +17,7 @@ import {
   Copy,
   CornerUpLeft,
   FileText,
+  Download,
   Flag,
   LockKeyhole,
   MoreVertical,
@@ -79,10 +80,12 @@ export function chatAvatar(chat: Chat): string {
 export function messageSnippet(m: {
   body: string;
   deleted?: boolean;
+  undecryptable?: boolean;
   attachment?: { name: string } | null;
   attachmentName?: string | null;
 }): string {
   if (m.deleted) return t("msg.deleted");
+  if (m.undecryptable) return `\u{1F512} ${t("msg.undecryptable")}`;
   if (m.body) return m.body;
   const file = m.attachment?.name || m.attachmentName;
   return file ? `\u{1F4CE} ${file}` : "";
@@ -569,6 +572,12 @@ export function Conversation({
           </div>
         )}
 
+        {!hasMore && loaded && (
+          <p className="e2ee-note">
+            <LockKeyhole size={13} /> {t("chat.encryptedNote")}
+          </p>
+        )}
+
         {hasMore && (
           <button
             className="load-older"
@@ -623,6 +632,12 @@ export function Conversation({
                 }}
                 onQuoteClick={(id) => void goTo(id)}
                 onMediaLoad={onMediaLoad}
+                onOpenFile={() =>
+                  m.attachment &&
+                  void backend.openAttachment(m.attachment).catch((caught) =>
+                    notify(messageOf(caught)),
+                  )
+                }
                 canReply={!composerHidden}
               />
             </React.Fragment>
@@ -738,6 +753,7 @@ export function Conversation({
             <small>{other.email || t("people.privateEmail")}</small>
             {other.bio && <p>{other.bio}</p>}
           </div>
+          <SafetyCode person={other} />
         </Modal>
       )}
 
@@ -800,6 +816,7 @@ function Bubble({
   onDelete,
   onQuoteClick,
   onMediaLoad,
+  onOpenFile,
   canReply,
 }: {
   m: Msg;
@@ -817,6 +834,7 @@ function Bubble({
   onDelete: () => void;
   onQuoteClick: (messageId: string) => void;
   onMediaLoad: () => void;
+  onOpenFile: () => void;
   canReply: boolean;
 }) {
   const menu = useRef<HTMLDivElement>(null);
@@ -863,8 +881,15 @@ function Bubble({
           </p>
         ) : (
           <>
-            {m.attachment?.mime.startsWith("image/") ? (
-              <a href={mediaUrl} target="_blank" rel="noreferrer">
+            {m.attachment?.mime.startsWith("image/") && mediaUrl ? (
+              <a
+                href={mediaUrl}
+                target="_blank"
+                rel="noreferrer"
+                // Κρυπτογραφημένη εικόνα = blob: URL. Το «άνοιγμα σε νέα καρτέλα»
+                // δεν δουλεύει παντού (π.χ. iOS PWA)· η λήψη δουλεύει.
+                download={m.attachment.key ? m.attachment.name : undefined}
+              >
                 <img
                   className="message-image"
                   src={mediaUrl}
@@ -875,27 +900,30 @@ function Bubble({
             ) : m.attachment ? (
               <a
                 className="file-card"
-                href={mediaUrl}
+                href={mediaUrl || "#"}
                 target="_blank"
                 rel="noreferrer"
+                onClick={(e) => {
+                  // Κρυπτογραφημένο αρχείο: κατεβαίνει και ανοίγει μόνο όταν το ζητήσεις.
+                  if (m.attachment?.key || !mediaUrl) {
+                    e.preventDefault();
+                    onOpenFile();
+                  }
+                }}
               >
-                <FileText />
+                {m.attachment.key ? <Download /> : <FileText />}
                 <span>
                   <b>{m.attachment.name}</b>
                   <small>{fileSize(m.attachment.size)}</small>
                 </span>
               </a>
             ) : null}
-            {m.body && (
-              <p>
-                {m.encrypted ? (
-                  <>
-                    <LockKeyhole size={12} /> {t("msg.encrypted")}
-                  </>
-                ) : (
-                  m.body
-                )}
+            {m.undecryptable ? (
+              <p className="undecryptable">
+                <LockKeyhole size={12} /> {t("msg.undecryptable")}
               </p>
+            ) : (
+              m.body && <p>{m.body}</p>
             )}
           </>
         )}
@@ -945,7 +973,7 @@ function Bubble({
                 <CornerUpLeft /> {t("msg.reply")}
               </button>
             )}
-            {!m.deleted && m.body && !m.encrypted && (
+            {!m.deleted && m.body && !m.undecryptable && (
               <button onClick={onCopy}>
                 <Copy /> {t("msg.copy")}
               </button>
@@ -1021,5 +1049,47 @@ function DeleteMessageDialog({
         </button>
       </div>
     </Modal>
+  );
+}
+
+/** Ο κωδικός ασφαλείας με κάποιον: τον συγκρίνετε από κοντά ή σε τηλέφωνο. */
+function SafetyCode({ person }: { person: User }) {
+  const [code, setCode] = useState<string[] | null>(null),
+    [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    backend
+      .safetyCodeWith(person.id)
+      .then((c) => alive && setCode(c))
+      .catch((caught) => alive && setError(messageOf(caught)));
+    return () => {
+      alive = false;
+    };
+  }, [person.id]);
+
+  return (
+    <div className="safety-code">
+      <h3>
+        <ShieldCheck size={16} /> {t("chat.safetyCode")}
+      </h3>
+      {error ? (
+        <p className="error">{error}</p>
+      ) : code === null ? (
+        <p className="hint">{t("common.loading")}</p>
+      ) : code.length ? (
+        <>
+          <p className="hint">{t("chat.safetyText", { name: person.name })}</p>
+          <div className="digits">
+            {code.map((group, i) => (
+              <code key={i}>{group}</code>
+            ))}
+          </div>
+          <p className="hint">{t("chat.safetyChanges")}</p>
+        </>
+      ) : (
+        <p className="hint">{t("chat.safetyNone", { name: person.name })}</p>
+      )}
+    </div>
   );
 }

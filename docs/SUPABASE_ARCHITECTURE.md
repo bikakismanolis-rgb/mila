@@ -1,38 +1,43 @@
-# Supabase architecture decision
+# Supabase architecture
 
-Supabase is the recommended managed backend for the MVP. It replaces the prototype JSON store and custom verification-code service without changing the product model.
+The browser talks directly to Supabase. Every write goes through a `security definer` RPC that checks membership, privacy settings and rate limits; tables are readable only through Row Level Security.
 
 ## Message delivery
 
-1. The client encrypts message content and attachments before upload once the Signal/MLS layer is integrated.
-2. An authenticated database operation inserts the ciphertext into `messages` (the durable source of truth).
-3. A database trigger emits a private Realtime Broadcast event on `conversation:<id>:messages`.
-4. Connected recipients update immediately; offline recipients fetch missed rows from Postgres when they reconnect.
-5. Typing indicators and presence are ephemeral Realtime events and are not stored as chat history.
-
-This deliberately avoids using Broadcast as the only message store. Delivery is realtime, but history remains durable and queryable.
+1. The sender's device fetches the public keys of every active device in the conversation (`conversation_device_keys`).
+2. It encrypts the message with a fresh AES-256-GCM key and wraps that key once per device (`apps/web/src/e2ee.ts`).
+3. `send_message` stores the ciphertext in `messages` and the wrapped keys in `message_keys`, after checking that every member with a device got a key. Plain text is rejected.
+4. Postgres changes reach connected members over Realtime; each one fetches the message with only the keys addressed to its own devices.
+5. Offline members fetch missed rows when they reconnect. A push notification (no message text) wakes them.
+6. Typing indicators are ephemeral Broadcast events and are never stored.
 
 ## Service mapping
 
-- Supabase Auth: email OTP/magic link; no phone field.
-- Postgres: profiles, memberships, requests, ciphertext messages, receipts, blocks and reports.
-- Realtime private channels: message notifications, typing, read receipts and online presence.
-- Storage private bucket: encrypted image/file blobs. Database attachment rows retain metadata and conversation ownership.
-- Row Level Security: only conversation members can read message/attachment rows or subscribe to that conversation's private topic.
-- Edge Functions or a small trusted API: contact matching, rate limits, moderation/report workflows and signed upload operations.
+- Supabase Auth: email and password, Google. No phone field. A trigger on `auth.users` enforces the app-wide sign-up limit.
+- Postgres: profiles, devices and public keys, conversations, memberships, requests, encrypted messages, wrapped keys, receipts, reactions, blocks, reports, rate-limit counters.
+- Realtime: postgres changes for messages, receipts and memberships; Broadcast for typing.
+- Storage, private buckets:
+  - `message-media`: encrypted attachment blobs only (`application/octet-stream`, max 16 MB). Readable by conversation members through short-lived signed URLs; useless without the key inside the message.
+  - `avatars`: a 256x256 JPEG redrawn on the device (no EXIF). Readable only by people who share an accepted conversation with the owner, and only the current photo.
+- Row Level Security: only members read message rows; only the recipient reads their wrapped keys; `profiles` is readable only by its owner, everything else goes through RPCs that apply the privacy rules.
+
+## Who sees what of a profile
+
+| Viewer | Name | Photo, bio | Email |
+| --- | --- | --- | --- |
+| Stranger who typed your full email | yes | no | the one they typed |
+| Someone you sent a request to | yes | no | no |
+| Someone who sent you a request | yes | yes | no |
+| Contact (accepted chat) or group member | yes | yes | if you allow it |
+
+Search for strangers works only on the exact, full email, and only when the person allows "Everyone". Contacts can be found by part of their name.
 
 ## Contact discovery
 
-The prototype parses explicitly selected CSV/vCard files locally and sends normalized SHA-256 email hashes. For production, use a server-side keyed HMAC/OPRF-style design; plain SHA-256 email hashes are vulnerable to dictionary enumeration because email addresses have low entropy. Never upload the whole address book without explicit consent.
+The app parses explicitly selected CSV/vCard files locally and sends normalized SHA-256 email hashes. Plain SHA-256 email hashes are vulnerable to dictionary enumeration because email addresses have low entropy, so every hash counts against the daily lookup limit. A server-side keyed HMAC or OPRF design would be better.
 
-## Media
+## Still open
 
-Use a private `message-media` bucket. Clients encrypt file bytes before upload, store only ciphertext in Storage, then insert an attachment row containing encrypted metadata. Short-lived signed URLs control download, while the client performs decryption.
-
-## Required before launch
-
-- Replace the WebCrypto demo key store with an audited Signal Protocol/MLS implementation.
-- Add database functions for atomic conversation creation and message insertion.
-- Add server-side rate limits, upload scanning, quotas and abuse tooling.
-- Configure a production SMTP provider and custom OTP templates.
-- Add automated RLS tests using two members plus an unrelated attacker account.
+- Forward secrecy (Signal-style ratchet or MLS).
+- Key-change warnings: the safety code exists, but the app does not yet alert you when a contact adds a device.
+- Abuse tooling for reports. Encrypted content cannot be scanned; reports carry only what the reporter forwards.

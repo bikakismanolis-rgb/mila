@@ -1,25 +1,36 @@
 // Ρυθμίσεις: προφίλ, γλώσσα, ειδοποιήσεις, ιδιωτικότητα, μπλοκαρισμένοι,
 // λογαριασμός (κωδικός, εξαγωγή, διαγραφή), αποσύνδεση.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Bell,
+  Camera,
   Download,
+  KeyRound,
   LockKeyhole,
   LogOut,
   ShieldCheck,
+  Smartphone,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
 import { supabase } from "../supabase";
 import * as backend from "../data";
-import type { Privacy, User } from "../data";
+import type { Device, Privacy, User } from "../data";
 import { privacyPolicyUrl } from "../platform";
 import { lang, setLang, t, translateError } from "../i18n";
 import type { Lang } from "../i18n";
 import { disablePush, enablePush, pushState } from "../push";
 import type { PushState } from "../push";
-import { Modal } from "./common";
+import { ConfirmDialog, Modal } from "./common";
+import { listTime } from "../format";
+
+const DEFAULT_PRIVACY: Privacy = {
+  discover: "everyone",
+  showEmail: "chat",
+  receipts: true,
+  online: true,
+};
 
 const messageOf = (caught: unknown) =>
   translateError(caught instanceof Error ? caught.message : String(caught)) ||
@@ -41,7 +52,7 @@ export function SettingsPanel({
 }) {
   const [name, setName] = useState(me.name),
     [bio, setBio] = useState(me.bio),
-    [privacy, setPrivacy] = useState<Privacy>(me.privacy),
+    [privacy, setPrivacy] = useState<Privacy>(me.privacy ?? DEFAULT_PRIVACY),
     [saving, setSaving] = useState(false),
     [notice, setNotice] = useState(""),
     [error, setError] = useState("");
@@ -67,11 +78,7 @@ export function SettingsPanel({
 
   return (
     <div className="settings">
-      <div className="profile">
-        <img src={me.avatar} alt="" />
-        <b>{me.name}</b>
-        <small>{me.email}</small>
-      </div>
+      <ProfilePhoto me={me} saved={saved} />
 
       <label>
         {t("settings.displayName")}
@@ -156,6 +163,8 @@ export function SettingsPanel({
         </select>
       </label>
 
+      <SecuritySection />
+
       <NotificationsSection />
 
       <BlockedSection version={blockedVersion} onUnblocked={onUnblocked} />
@@ -170,6 +179,196 @@ export function SettingsPanel({
         <ShieldCheck size={14} /> {t("settings.storageNote")}
       </p>
     </div>
+  );
+}
+
+function ProfilePhoto({ me, saved }: { me: User; saved: (u: User) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [working, setWorking] = useState(false),
+    [error, setError] = useState("");
+
+  async function run(action: () => Promise<User>) {
+    if (working) return;
+    setWorking(true);
+    setError("");
+    try {
+      saved(await action());
+    } catch (caught) {
+      setError(messageOf(caught));
+    } finally {
+      setWorking(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  return (
+    <div className="profile">
+      <button
+        className="avatar-edit"
+        onClick={() => input.current?.click()}
+        disabled={working}
+        aria-label={me.avatarPath ? t("settings.photoChange") : t("settings.photoAdd")}
+      >
+        <img src={me.avatar} alt="" />
+        <span>
+          <Camera size={16} />
+        </span>
+      </button>
+      <b>{me.name}</b>
+      <small>{me.email}</small>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void run(() => backend.setAvatar(file));
+        }}
+      />
+      <div className="photo-actions">
+        <button
+          className="ghost"
+          onClick={() => input.current?.click()}
+          disabled={working}
+        >
+          {working
+            ? t("common.working")
+            : me.avatarPath
+              ? t("settings.photoChange")
+              : t("settings.photoAdd")}
+        </button>
+        {me.avatarPath && (
+          <button
+            className="ghost"
+            onClick={() => void run(backend.removeAvatar)}
+            disabled={working}
+          >
+            {t("settings.photoRemove")}
+          </button>
+        )}
+      </div>
+      <small className="field-hint">{t("settings.photoHint")}</small>
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
+function SecuritySection() {
+  const [current, setCurrent] = useState<{ id: string | null; ephemeral: boolean } | null>(null),
+    [devices, setDevices] = useState<Device[]>([]),
+    [prints, setPrints] = useState<Record<string, string>>({}),
+    [revoking, setRevoking] = useState<Device | null>(null),
+    [legacy, setLegacy] = useState(0),
+    [confirmLegacy, setConfirmLegacy] = useState(false),
+    [notice, setNotice] = useState(""),
+    [error, setError] = useState("");
+
+  async function load() {
+    try {
+      const device = await backend.ensureDevice();
+      const list = await backend.listMyDevices();
+      const entries = await Promise.all(
+        list.map(async (d) => [d.id, await backend.fingerprint(d.publicKey)] as const),
+      );
+      setCurrent({ id: device.deviceId, ephemeral: device.ephemeral });
+      setDevices(list);
+      setPrints(Object.fromEntries(entries));
+    } catch (caught) {
+      setError(messageOf(caught));
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    backend.countMyUnencryptedMessages().then(setLegacy);
+  }, []);
+
+  const mine = devices.find((d) => d.id === current?.id);
+  const others = devices.filter((d) => d.id !== current?.id);
+
+  return (
+    <section className="security-section">
+      <h3>{t("settings.security")}</h3>
+      <p className="hint">
+        <ShieldCheck size={14} /> {t("settings.securityText")}
+      </p>
+      {current?.ephemeral ? (
+        <p className="hint warning">{t("settings.ephemeral")}</p>
+      ) : (
+        <p className="hint">{t("settings.keyWarning")}</p>
+      )}
+
+      <div className="device-list">
+        {mine && (
+          <div>
+            <Smartphone size={18} />
+            <span>
+              <b>
+                {t("settings.thisDevice")}
+                {mine.label ? ` · ${mine.label}` : ""}
+              </b>
+              <small>
+                {t("settings.fingerprint")}: <code>{prints[mine.id]}</code>
+              </small>
+            </span>
+          </div>
+        )}
+        {others.map((d) => (
+          <div key={d.id}>
+            <KeyRound size={18} />
+            <span>
+              <b>{d.label || "—"}</b>
+              <small>
+                {t("settings.lastSeen", { date: listTime(d.lastSeenAt) })} ·{" "}
+                <code>{prints[d.id]}</code>
+              </small>
+            </span>
+            <button onClick={() => setRevoking(d)}>{t("settings.revoke")}</button>
+          </div>
+        ))}
+      </div>
+
+      {legacy > 0 && (
+        <>
+          <h3>{t("settings.legacyTitle")}</h3>
+          <p className="hint">{t("settings.legacyText", { n: legacy })}</p>
+          <button className="secondary" onClick={() => setConfirmLegacy(true)}>
+            <Trash2 size={15} /> {t("settings.legacyDelete")}
+          </button>
+        </>
+      )}
+      {notice && <p className="notice">{notice}</p>}
+      {error && <p className="error">{error}</p>}
+
+      {revoking && (
+        <ConfirmDialog
+          title={t("settings.revokeTitle")}
+          text={t("settings.revokeText")}
+          confirmLabel={t("settings.revoke")}
+          danger
+          onConfirm={async () => {
+            await backend.revokeDevice(revoking.id);
+            await load();
+          }}
+          close={() => setRevoking(null)}
+        />
+      )}
+      {confirmLegacy && (
+        <ConfirmDialog
+          title={t("settings.legacyDelete")}
+          text={t("settings.legacyConfirm")}
+          confirmLabel={t("settings.legacyDelete")}
+          danger
+          onConfirm={async () => {
+            const n = await backend.deleteMyUnencryptedMessages();
+            setLegacy(0);
+            setNotice(t("settings.legacyDone", { n }));
+          }}
+          close={() => setConfirmLegacy(false)}
+        />
+      )}
+    </section>
   );
 }
 
