@@ -1,7 +1,7 @@
 // Οθόνη σύνδεσης / εγγραφής / ορισμού νέου κωδικού.
 
 import React, { useEffect, useRef, useState } from "react";
-import { LockKeyhole, MessageCircle, ShieldCheck } from "lucide-react";
+import { ArrowLeft, LockKeyhole, MessageCircle, ShieldCheck } from "lucide-react";
 import { hasSupabaseConfig, supabase } from "../supabase";
 import * as backend from "../data";
 import type { User } from "../data";
@@ -135,14 +135,19 @@ export function Login({
   done,
   recoveringPassword,
   recoveryDone,
+  initialMode = "signin",
+  onBack,
 }: {
   done: (u: User) => void;
   recoveringPassword: boolean;
   recoveryDone: () => void;
+  initialMode?: "signin" | "signup";
+  /** Επιστροφή στην αρχική σελίδα (μόνο όταν ήρθε από εκεί). */
+  onBack?: () => void;
 }) {
   const [email, setEmail] = useState(""),
     [name, setName] = useState(""),
-    [authMode, setAuthMode] = useState<"signin" | "signup">("signin"),
+    [authMode, setAuthMode] = useState<"signin" | "signup">(initialMode),
     [password, setPassword] = useState(""),
     [newPassword, setNewPassword] = useState(""),
     [notice, setNotice] = useState(""),
@@ -309,6 +314,11 @@ export function Login({
   return (
     <main className="login">
       <section className="login-card">
+        {onBack && (
+          <button type="button" className="login-back" onClick={onBack}>
+            <ArrowLeft size={16} /> {t("login.backHome")}
+          </button>
+        )}
         <div className="brandmark">
           <MessageCircle />
         </div>
