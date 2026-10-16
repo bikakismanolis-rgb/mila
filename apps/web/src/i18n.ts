@@ -115,6 +115,8 @@ const en = {
   "login.noSession": "Sign-in did not complete. Please try again.",
   "login.googleLoadFailed": "Could not load Google Sign-In.",
   "login.googleContinue": "Continue with Google",
+  "login.install": "How do I put Mila on my phone?",
+  "account.install": "Put Mila on your phone or computer",
   "login.googleHint": "Tap Google's button to continue.",
   "login.googleNoToken": "Google did not complete the sign-in.",
   "login.serverProblem":
@@ -449,6 +451,8 @@ const el: Record<TKey, string> = {
   "login.noSession": "Η σύνδεση δεν ολοκληρώθηκε. Δοκίμασε ξανά.",
   "login.googleLoadFailed": "Δεν φόρτωσε η σύνδεση με Google.",
   "login.googleContinue": "Συνέχεια με Google",
+  "login.install": "Πώς βάζω το Mila στο κινητό μου;",
+  "account.install": "Βάλε το Mila στο κινητό ή τον υπολογιστή σου",
   "login.googleHint": "Πάτα το κουμπί της Google για να συνεχίσεις.",
   "login.googleNoToken": "Η Google δεν ολοκλήρωσε τη σύνδεση.",
   "login.serverProblem":

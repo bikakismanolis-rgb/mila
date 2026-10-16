@@ -1751,3 +1751,13 @@ button {
 .google-start:disabled {
   opacity: 0.6;
 }
+
+.install-link {
+  display: block;
+  margin-top: 16px;
+  text-align: center;
+  color: var(--purple);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}

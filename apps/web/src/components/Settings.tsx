@@ -551,6 +551,11 @@ function AccountSection({ email }: { email: string }) {
         </a>{" "}
         {t("account.readPolicyAfter")}
       </p>
+      <p className="hint">
+        <a href="/install" target="_blank" rel="noopener noreferrer">
+          {t("account.install")}
+        </a>
+      </p>
       <button
         className="secondary"
         type="button"

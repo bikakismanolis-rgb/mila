@@ -421,6 +421,9 @@ export function Login({
           <ShieldCheck /> {t("login.trust")}
         </div>
         <ConnectionProblem />
+        <a className="install-link" href="/install">
+          {t("login.install")}
+        </a>
         <LanguageSwitch />
       </section>
       <Pitch />
