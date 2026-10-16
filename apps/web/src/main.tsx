@@ -27,13 +27,14 @@ import { supabase } from "./supabase";
 // παντού ως destructured μεταβλητή από τις απαντήσεις του Supabase.
 import * as backend from "./data";
 import type { Chat, Msg, User } from "./data";
-import { registerServiceWorker } from "./platform";
+import { isNative, isStandalone, isTauri, registerServiceWorker } from "./platform";
 import { bootstrapNative } from "./native";
 import { t, translateError } from "./i18n";
 import { listTime } from "./format";
 import { disablePush, refreshPushOwner } from "./push";
 import { Empty } from "./components/common";
 import { Login } from "./components/Login";
+import { Landing } from "./components/Landing";
 import { SettingsPanel } from "./components/Settings";
 import {
   Conversation,
@@ -58,6 +59,16 @@ function isPasswordRecoveryLink() {
   );
 }
 
+/** Η αρχική σελίδα είναι για επισκέπτες στον browser. Το εγκατεστημένο app,
+ *  τα native κελύφη, και όποιος έρχεται από link επιβεβαίωσης/επαναφοράς ή με
+ *  ?login, πάνε κατευθείαν στην είσοδο. */
+function wantsLanding(): boolean {
+  if (isStandalone || isNative || isTauri || isPasswordRecoveryLink()) return false;
+  const search = new URLSearchParams(window.location.search);
+  if (search.has("login") || search.has("c") || search.has("code")) return false;
+  return !/access_token|error_description/.test(window.location.hash);
+}
+
 /** Η ειδοποίηση ανοίγει το app στο /?c=<id συνομιλίας>. Το διαβάζουμε μία
  *  φορά και καθαρίζουμε τη διεύθυνση. */
 function takeConversationFromUrl(): string | null {
@@ -76,6 +87,13 @@ function takeConversationFromUrl(): string | null {
 
 function App() {
   const [me, setMe] = useState<User | null>(null),
+    // Μέχρι να ξέρουμε αν υπάρχει ήδη συνεδρία, δεν δείχνουμε ούτε αρχική
+    // σελίδα ούτε είσοδο: αλλιώς ένας συνδεδεμένος χρήστης τις βλέπει να
+    // «αναβοσβήνουν» πριν ανοίξει η εφαρμογή.
+    [sessionChecked, setSessionChecked] = useState(false),
+    [entry, setEntry] = useState<"landing" | "signin" | "signup">(() =>
+      wantsLanding() ? "landing" : "signin",
+    ),
     [recoveringPassword, setRecoveringPassword] = useState(
       () =>
         isPasswordRecoveryLink() ||
@@ -165,7 +183,9 @@ function App() {
         await supabase.auth.signOut();
       }
     }
-    void restoreSession();
+    void restoreSession().finally(() => {
+      if (alive) setSessionChecked(true);
+    });
     return () => {
       alive = false;
     };
@@ -376,14 +396,22 @@ function App() {
     location.reload();
   }
 
-  if (!me)
+  if (!me) {
+    if (!sessionChecked && !recoveringPassword) return null;
+    if (entry === "landing" && !recoveringPassword)
+      return <Landing start={setEntry} />;
     return (
       <Login
+        // Νέο key = νέα φόρμα στη σωστή κατάσταση (εγγραφή ή σύνδεση).
+        key={entry}
         done={setMe}
         recoveringPassword={recoveringPassword}
         recoveryDone={() => setRecoveringPassword(false)}
+        initialMode={entry === "signup" ? "signup" : "signin"}
+        onBack={wantsLanding() ? () => setEntry("landing") : undefined}
       />
     );
+  }
 
   const term = query.trim().toLowerCase();
   const visibleChats = chats.filter(
