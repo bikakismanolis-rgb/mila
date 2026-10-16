@@ -440,3 +440,22 @@ select test.ok((select (push_targets(m.id)->'payload'->>'body') = '' from messag
   where m.encryption_version = 1 and m.deleted_at is null limit 1),
   'push notification carries no message text');
 reset role;
+
+-- ---------------------------------------------------------------------------
+-- 10. (0011) Η εγγραφή δουλεύει χωρίς EXECUTE στις trigger functions
+-- ---------------------------------------------------------------------------
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'auth_writer_test') then
+    create role auth_writer_test nologin;
+  end if;
+end $$;
+grant usage on schema auth to auth_writer_test;
+grant insert on auth.users to auth_writer_test;
+update rate_limit_rules set max_count = 100000 where action = 'signup';
+set role auth_writer_test;
+insert into auth.users (email) values ('trigger-check@example.com');
+reset role;
+select test.ok(exists (select 1 from profiles where email = 'trigger-check@example.com'),
+  'signup trigger still creates the profile without EXECUTE grants');
+select test.ok(not has_function_privilege('anon', 'public.handle_new_auth_user()', 'EXECUTE'),
+  'anon cannot call the trigger function');
