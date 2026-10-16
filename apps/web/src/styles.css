@@ -2108,3 +2108,18 @@ button {
     width: 260px;
   }
 }
+
+.composer-note.waiting-note {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 8px;
+  background: #fff8e6;
+  color: #7a6326;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.composer-note.waiting-note svg {
+  flex: none;
+  margin-top: 2px;
+}

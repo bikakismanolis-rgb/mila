@@ -229,6 +229,12 @@ const en = {
   "msg.deleted": "This message was deleted",
   "msg.encrypted": "Encrypted message",
   "msg.undecryptable": "Can't be read on this device",
+  "msg.pendingKey": "Arrives when the sender opens Mila",
+  "msg.waiting": "Waiting to be delivered",
+  "msg.waitingNote":
+    "{name} hasn't opened the new Mila yet. Messages with a clock are delivered once they open it and you open Mila again.",
+  "msg.waitingNoteGroup":
+    "Some members haven't opened the new Mila yet. Messages with a clock reach them once they open it and you open Mila again.",
   "msg.reply": "Reply",
   "msg.copy": "Copy",
   "msg.copyFailed": "Could not copy.",
@@ -594,6 +600,12 @@ const el: Record<TKey, string> = {
   "msg.deleted": "Το μήνυμα διαγράφηκε",
   "msg.encrypted": "Κρυπτογραφημένο μήνυμα",
   "msg.undecryptable": "Δεν διαβάζεται σε αυτή τη συσκευή",
+  "msg.pendingKey": "Θα εμφανιστεί μόλις ανοίξει το Mila ο αποστολέας",
+  "msg.waiting": "Σε αναμονή για παράδοση",
+  "msg.waitingNote":
+    "Ο/Η {name} δεν έχει ανοίξει ακόμα το νέο Mila. Τα μηνύματα με το ρολογάκι θα του παραδοθούν μόλις το ανοίξει και μπεις κι εσύ ξανά στο Mila.",
+  "msg.waitingNoteGroup":
+    "Κάποια μέλη δεν έχουν ανοίξει ακόμα το νέο Mila. Τα μηνύματα με το ρολογάκι θα τους παραδοθούν μόλις το ανοίξουν και μπεις κι εσύ ξανά στο Mila.",
   "msg.reply": "Απάντηση",
   "msg.copy": "Αντιγραφή",
   "msg.copyFailed": "Η αντιγραφή δεν έγινε.",

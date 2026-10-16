@@ -14,6 +14,7 @@ import {
   Ban,
   Check,
   CheckCheck,
+  Clock,
   Copy,
   CornerUpLeft,
   FileText,
@@ -81,11 +82,13 @@ export function messageSnippet(m: {
   body: string;
   deleted?: boolean;
   undecryptable?: boolean;
+  pendingKey?: boolean;
   attachment?: { name: string } | null;
   attachmentName?: string | null;
 }): string {
   if (m.deleted) return t("msg.deleted");
-  if (m.undecryptable) return `\u{1F512} ${t("msg.undecryptable")}`;
+  if (m.undecryptable)
+    return `\u{1F512} ${t(m.pendingKey ? "msg.pendingKey" : "msg.undecryptable")}`;
   if (m.body) return m.body;
   const file = m.attachment?.name || m.attachmentName;
   return file ? `\u{1F4CE} ${file}` : "";
@@ -279,9 +282,13 @@ export function Conversation({
       if (document.visibilityState === "visible") void refreshLatest();
     };
     document.addEventListener("visibilitychange", onVisible);
+    // Παραδόθηκαν κλειδιά για μηνύματα σε αναμονή, ή ήρθε κλειδί για εμένα.
+    const onKeys = () => void refreshLatest();
+    window.addEventListener("mila:keys-delivered", onKeys);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("mila:keys-delivered", onKeys);
       window.clearTimeout(typingTimer.current);
       backend.sendTyping(typingChannel.current, false, me.id);
       backend.unsubscribe(changes);
@@ -653,6 +660,16 @@ export function Conversation({
         )}
       </div>
 
+      {!composerHidden && messages.some((m) => m.senderId === me.id && m.waiting) && (
+        <div className="composer-note waiting-note">
+          <Clock size={15} />
+          <span>
+            {isGroup
+              ? t("msg.waitingNoteGroup")
+              : t("msg.waitingNote", { name: other?.name || title })}
+          </span>
+        </div>
+      )}
       {chat.blockedByMe && other && (
         <div className="composer-note">
           <span>{t("chat.youBlocked", { name: other.name })}</span>
@@ -920,7 +937,8 @@ function Bubble({
             ) : null}
             {m.undecryptable ? (
               <p className="undecryptable">
-                <LockKeyhole size={12} /> {t("msg.undecryptable")}
+                <LockKeyhole size={12} />{" "}
+                {t(m.pendingKey ? "msg.pendingKey" : "msg.undecryptable")}
               </p>
             ) : (
               m.body && <p>{m.body}</p>
@@ -931,7 +949,13 @@ function Bubble({
           {time(m.createdAt)}{" "}
           {own &&
             !m.deleted &&
-            (m.readBy.length > 0 ? <CheckCheck /> : <Check />)}
+            (m.waiting ? (
+              <Clock aria-label={t("msg.waiting")} />
+            ) : m.readBy.length > 0 ? (
+              <CheckCheck />
+            ) : (
+              <Check />
+            ))}
         </small>
       </div>
 

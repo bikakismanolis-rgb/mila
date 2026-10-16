@@ -448,6 +448,56 @@ export async function decryptMessage(
   }
 }
 
+/**
+ * Η συσκευή που έστειλε ένα μήνυμα τυλίγει ξανά το κλειδί του για συσκευές
+ * που δεν υπήρχαν τότε (ο παραλήπτης δεν είχε ανοίξει ακόμα το Mila). Ξετυλίγει
+ * το δικό της αντίγραφο και το τυλίγει για καθεμία, με τον ίδιο τρόπο που θα
+ * το είχε κάνει στην αποστολή. Ο server δεν βλέπει τίποτα από αυτά.
+ */
+export async function rewrapForDevices(
+  me: DeviceKeys,
+  context: { conversationId: string; senderId: string; clientId: string },
+  envelope: string,
+  myWrapped: string,
+  recipients: Recipient[],
+): Promise<{ device: string; key: string }[]> {
+  const full: Context = { ...context, senderKey: me.publicKey };
+  const { iv: ivText, ct: ctText } = JSON.parse(envelope) as { iv: string; ct: string };
+  const digest = toB64(await sha256(concat(fromB64(ivText), fromB64(ctText))));
+  const w = fromB64(myWrapped);
+  const raw = new Uint8Array(
+    await subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: w.slice(0, 12),
+        additionalData: wrapAad(full, me.publicKey, digest),
+      },
+      await pairKey(me, me.publicKey),
+      w.slice(12),
+    ),
+  );
+  const keys: { device: string; key: string }[] = [];
+  for (const r of recipients) {
+    let pk: CryptoKey;
+    try {
+      pk = await pairKey(me, r.publicKey);
+    } catch {
+      continue;
+    }
+    const wrapIv = random(12);
+    const wrapped = new Uint8Array(
+      await subtle.encrypt(
+        { name: "AES-GCM", iv: wrapIv, additionalData: wrapAad(full, r.publicKey, digest) },
+        pk,
+        raw,
+      ),
+    );
+    keys.push({ device: r.deviceId, key: toB64(concat(wrapIv, wrapped)) });
+  }
+  raw.fill(0);
+  return keys;
+}
+
 // ---------------------------------------------------------------------------
 // Αρχεία
 // ---------------------------------------------------------------------------

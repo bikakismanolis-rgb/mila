@@ -142,6 +142,9 @@ function App() {
         loadAgain.current = false;
         const fresh = await backend.listChats();
         setChats(fresh);
+        // Όποιος δεν είχε κλειδί όταν του έγραψα και τώρα έχει, παίρνει τα
+        // μηνύματά του. Στο παρασκήνιο, δεν καθυστερεί τη λίστα.
+        void backend.deliverPendingKeys();
         // Η ανοιχτή συνομιλία δεν υπάρχει πια για μένα (με έβγαλαν από ομάδα,
         // απέρριψα το request): κλείνει.
         const open = activeIdRef.current;
