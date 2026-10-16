@@ -114,6 +114,8 @@ const en = {
     "Account created. Check your email to confirm your account, then sign in here with your password.",
   "login.noSession": "Sign-in did not complete. Please try again.",
   "login.googleLoadFailed": "Could not load Google Sign-In.",
+  "login.googleContinue": "Continue with Google",
+  "login.googleHint": "Tap Google's button to continue.",
   "login.googleNoToken": "Google did not complete the sign-in.",
   "login.serverProblem":
     "We can't reach the server right now. Please try again in a little while.",
@@ -446,6 +448,8 @@ const el: Record<TKey, string> = {
     "Ο λογαριασμός δημιουργήθηκε. Άνοιξε το email που σου στείλαμε για να τον επιβεβαιώσεις, και μετά συνδέσου εδώ με τον κωδικό σου.",
   "login.noSession": "Η σύνδεση δεν ολοκληρώθηκε. Δοκίμασε ξανά.",
   "login.googleLoadFailed": "Δεν φόρτωσε η σύνδεση με Google.",
+  "login.googleContinue": "Συνέχεια με Google",
+  "login.googleHint": "Πάτα το κουμπί της Google για να συνεχίσεις.",
   "login.googleNoToken": "Η Google δεν ολοκλήρωσε τη σύνδεση.",
   "login.serverProblem":
     "Δεν μπορούμε να φτάσουμε στον server αυτή τη στιγμή. Δοκίμασε ξανά σε λίγο.",
