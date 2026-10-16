@@ -29,12 +29,24 @@ function detect(): Lang {
 
 export const lang: Lang = detect();
 
+/** Ετικέτα γλώσσας που δέχεται το Intl. Μερικά Linux δίνουν π.χ. «en-US@posix»,
+ *  που κάνει το Intl να πετάει σφάλμα και ρίχνει όλη τη σελίδα. */
+function intlSafe(tag: string | undefined, fallback: string): string {
+  try {
+    return tag && Intl.DateTimeFormat.supportedLocalesOf([tag]).length
+      ? tag
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /** Για ώρες και ημερομηνίες (Intl). */
 export const locale: string =
   lang === "el"
     ? "el-GR"
     : navigator.language?.toLowerCase().startsWith("en")
-      ? navigator.language
+      ? intlSafe(navigator.language, "en-GB")
       : "en-GB";
 
 document.documentElement.lang = lang;
@@ -80,7 +92,7 @@ const en = {
   "login.consentBefore": "By creating an account you agree to our",
   "login.privacyPolicy": "privacy policy",
   "login.consentAfter":
-    "Messages are stored on our servers and are not end-to-end encrypted.",
+    "Messages are end-to-end encrypted: they are locked on your device before they leave it.",
   "login.newHere": "New here?",
   "login.forgot": "Forgot password?",
   "login.haveAccount": "Already have an account?",
@@ -119,7 +131,7 @@ const en = {
   "list.noneTitle": "Nothing found",
   "list.noneText": "No chat or message matches your search.",
 
-  "people.searchPlaceholder": "Name, username or full email",
+  "people.searchPlaceholder": "Their full email address",
   "people.import": "Import email contacts",
   "people.importHint":
     "Your address book never leaves your device — only scrambled fingerprints of the emails are compared.",
@@ -127,10 +139,13 @@ const en = {
   "people.privateEmail": "private email",
   "people.emptyTitle": "Find someone",
   "people.emptyText":
-    "Search by name or username, or type their full email address.",
+    "Type their whole email address. Mila never lists strangers by name or by part of an email, so nobody can browse who is here.",
+  "people.keepTyping": "Type the whole email address",
+  "people.keepTypingText":
+    "People you don't chat with yet only show up for their exact, full email.",
   "people.noneTitle": "No one found",
   "people.noneText":
-    "Check the spelling. To search by email, type the whole address.",
+    "Check the spelling. They may also have chosen not to be found.",
 
   "chat.you": "You",
   "chat.group": "Group",
@@ -162,6 +177,14 @@ const en = {
   "chat.uploading": "Uploading…",
   "chat.placeholder": "Write a message",
   "chat.send": "Send",
+  "chat.encryptedNote": "Messages here are end-to-end encrypted. Only the people in this chat can read them.",
+  "chat.safetyCode": "Safety code",
+  "chat.safetyText":
+    "Compare these numbers with {name} in person or on a call. If they match on both screens, no one is listening in between.",
+  "chat.safetyNone":
+    "{name} hasn't opened Mila since encryption was switched on, so there is nothing to compare yet.",
+  "chat.safetyChanges": "The code changes when either of you adds or removes a device.",
+  "chat.download": "Download",
 
   "request.title": "{name} wants to chat",
   "request.text": "Accept to move this conversation into your regular inbox.",
@@ -172,6 +195,7 @@ const en = {
 
   "msg.deleted": "This message was deleted",
   "msg.encrypted": "Encrypted message",
+  "msg.undecryptable": "Can't be read on this device",
   "msg.reply": "Reply",
   "msg.copy": "Copy",
   "msg.copyFailed": "Could not copy.",
@@ -219,7 +243,7 @@ const en = {
   "settings.discoverContacts": "Only people I already chat with",
   "settings.discoverNobody": "Nobody",
   "settings.discoverHint":
-    "\"Everyone\": by name, username, or by typing your whole email. Never by part of your email.",
+    "\"Everyone\": only by typing your whole email. Never by name or part of your email.",
   "settings.showEmail": "Who can see my email",
   "settings.showEmailContacts": "People I chat with",
   "settings.showEmailNobody": "Nobody",
@@ -232,7 +256,33 @@ const en = {
   "settings.blocked": "Blocked people",
   "settings.blockedNone": "You haven't blocked anyone.",
   "settings.storageNote":
-    "Messages are stored on our servers and are not end-to-end encrypted. Your email is never shared without your say-so, and we never ask for a phone number.",
+    "Messages and files are end-to-end encrypted: our servers store only scrambled data they can't read. Your email is never shared without your say-so, and we never ask for a phone number.",
+  "settings.photo": "Profile photo",
+  "settings.photoChange": "Change photo",
+  "settings.photoAdd": "Add a photo",
+  "settings.photoRemove": "Remove",
+  "settings.photoHint": "Only people you chat with can see it. Location and camera details are stripped before upload.",
+  "settings.security": "Encryption and devices",
+  "settings.securityText":
+    "Your messages are locked on this device with a key that never leaves it. Each device you use has its own key.",
+  "settings.keyWarning":
+    "If you clear this browser's data, its key is gone and older messages can't be opened here again.",
+  "settings.ephemeral":
+    "This browser can't store the key, so messages can only be read until you close Mila.",
+  "settings.thisDevice": "This device",
+  "settings.fingerprint": "Fingerprint",
+  "settings.lastSeen": "Last used {date}",
+  "settings.revoke": "Remove",
+  "settings.revokeTitle": "Remove this device?",
+  "settings.revokeText":
+    "It stops receiving new messages straight away. Messages it already has stay on it.",
+  "settings.legacyTitle": "Older messages",
+  "settings.legacyText":
+    "{n} messages you sent before encryption are still stored as plain text on our server.",
+  "settings.legacyDelete": "Delete them for everyone",
+  "settings.legacyConfirm":
+    "They disappear from every chat, for you and for the people you sent them to. This can't be undone.",
+  "settings.legacyDone": "Done. {n} messages deleted.",
 
   "push.toggle": "Notify me about new messages",
   "push.toggleHint": "On this device, even when Mila is closed",
@@ -319,6 +369,26 @@ const en = {
   "err.adminOnly": "Only a group admin can do that.",
   "err.pushSave": "Could not turn on notifications on this device.",
   "err.pushUnavailable": "Notifications are not available yet. Please try again later.",
+  "err.avatar": "Could not update your photo.",
+  "err.avatarType": "Choose an image file (JPEG, PNG or similar).",
+  "err.noCrypto":
+    "This browser can't encrypt messages. Open Mila over https in an up-to-date browser.",
+  "err.device":
+    "Could not set up encryption on this device. Check your connection and try again.",
+  "err.download": "Could not open that file.",
+  "err.limitUploads": "You've sent a lot of files recently. Please try again later.",
+  "err.limitGeneric": "You're doing that too often. Please try again later.",
+  "err.limitMessages": "You're sending messages very fast. Wait a moment and try again.",
+  "err.limitRequests": "You've started many new conversations recently. Try again later.",
+  "err.limitLookup": "Too many email searches for now. Try again in an hour.",
+  "err.tooManyContacts": "That file has more than 500 email addresses.",
+  "err.waitForAccept": "You can send up to 3 messages until they accept your request.",
+  "err.recipientNoKeys":
+    "They need to open Mila once before you can send them encrypted messages.",
+  "err.mustEncrypt": "Please reload Mila to get the latest version.",
+  "err.signupBusy": "We can't create new accounts right now. Please try again in a little while.",
+
+  "export.otherDevice": "Encrypted for another of your devices; it can't be opened here.",
 } as const;
 
 export type TKey = keyof typeof en;
@@ -354,7 +424,7 @@ const el: Record<TKey, string> = {
   "login.consentBefore": "Δημιουργώντας λογαριασμό συμφωνείς με την",
   "login.privacyPolicy": "πολιτική απορρήτου",
   "login.consentAfter":
-    "Τα μηνύματα αποθηκεύονται στους servers μας και δεν είναι κρυπτογραφημένα από άκρη σε άκρη.",
+    "Τα μηνύματα κρυπτογραφούνται από άκρη σε άκρη: κλειδώνουν στη συσκευή σου πριν φύγουν από αυτήν.",
   "login.newHere": "Πρώτη φορά εδώ;",
   "login.forgot": "Ξέχασες τον κωδικό;",
   "login.haveAccount": "Έχεις ήδη λογαριασμό;",
@@ -393,7 +463,7 @@ const el: Record<TKey, string> = {
   "list.noneTitle": "Δεν βρέθηκε τίποτα",
   "list.noneText": "Καμία συνομιλία ή μήνυμα δεν ταιριάζει με αυτό που έψαξες.",
 
-  "people.searchPlaceholder": "Όνομα, username ή ολόκληρο email",
+  "people.searchPlaceholder": "Ολόκληρο το email του",
   "people.import": "Εισαγωγή επαφών email",
   "people.importHint":
     "Οι επαφές σου δεν φεύγουν από τη συσκευή σου — συγκρίνονται μόνο «ανακατεμένα» αποτυπώματα των email.",
@@ -401,10 +471,13 @@ const el: Record<TKey, string> = {
   "people.privateEmail": "κρυφό email",
   "people.emptyTitle": "Βρες κάποιον",
   "people.emptyText":
-    "Ψάξε με όνομα ή username, ή γράψε ολόκληρο το email του.",
+    "Γράψε ολόκληρη τη διεύθυνση email του. Το Mila δεν δείχνει ποτέ αγνώστους με όνομα ή κομμάτι email, οπότε κανείς δεν μπορεί να ξεφυλλίσει ποιος είναι εδώ.",
+  "people.keepTyping": "Γράψε ολόκληρο το email",
+  "people.keepTypingText":
+    "Όσοι δεν είναι ακόμα επαφές σου εμφανίζονται μόνο με το ακριβές, ολόκληρο email τους.",
   "people.noneTitle": "Δεν βρέθηκε κανείς",
   "people.noneText":
-    "Έλεγξε την ορθογραφία. Για αναζήτηση με email, γράψε ολόκληρη τη διεύθυνση.",
+    "Έλεγξε την ορθογραφία. Μπορεί επίσης να έχει διαλέξει να μη βρίσκεται.",
 
   "chat.you": "Εσύ",
   "chat.group": "Ομάδα",
@@ -436,6 +509,14 @@ const el: Record<TKey, string> = {
   "chat.uploading": "Ανεβαίνει…",
   "chat.placeholder": "Γράψε ένα μήνυμα",
   "chat.send": "Αποστολή",
+  "chat.encryptedNote": "Τα μηνύματα εδώ κρυπτογραφούνται από άκρη σε άκρη. Τα διαβάζουν μόνο όσοι είναι σε αυτή τη συνομιλία.",
+  "chat.safetyCode": "Κωδικός ασφαλείας",
+  "chat.safetyText":
+    "Σύγκρινε αυτούς τους αριθμούς με τον/την {name} από κοντά ή σε τηλέφωνο. Αν είναι ίδιοι και στις δύο οθόνες, κανείς δεν παρεμβάλλεται ανάμεσά σας.",
+  "chat.safetyNone":
+    "Ο/Η {name} δεν έχει ανοίξει το Mila από τότε που μπήκε η κρυπτογράφηση, οπότε δεν υπάρχει ακόμα κάτι να συγκρίνετε.",
+  "chat.safetyChanges": "Ο κωδικός αλλάζει όταν κάποιος από τους δύο προσθέσει ή αφαιρέσει συσκευή.",
+  "chat.download": "Λήψη",
 
   "request.title": "{name} θέλει να σου μιλήσει",
   "request.text": "Αν δεχτείς, η συνομιλία μπαίνει κανονικά στα μηνύματά σου.",
@@ -446,6 +527,7 @@ const el: Record<TKey, string> = {
 
   "msg.deleted": "Το μήνυμα διαγράφηκε",
   "msg.encrypted": "Κρυπτογραφημένο μήνυμα",
+  "msg.undecryptable": "Δεν διαβάζεται σε αυτή τη συσκευή",
   "msg.reply": "Απάντηση",
   "msg.copy": "Αντιγραφή",
   "msg.copyFailed": "Η αντιγραφή δεν έγινε.",
@@ -493,7 +575,7 @@ const el: Record<TKey, string> = {
   "settings.discoverContacts": "Μόνο όσοι μιλάμε ήδη",
   "settings.discoverNobody": "Κανείς",
   "settings.discoverHint":
-    "«Όλοι»: με το όνομα, το username, ή γράφοντας ολόκληρο το email σου. Ποτέ με κομμάτι του email.",
+    "«Όλοι»: μόνο όποιος γράψει ολόκληρο το email σου. Ποτέ με το όνομα ή με κομμάτι του email.",
   "settings.showEmail": "Ποιος βλέπει το email μου",
   "settings.showEmailContacts": "Όσοι μιλάμε",
   "settings.showEmailNobody": "Κανείς",
@@ -506,7 +588,33 @@ const el: Record<TKey, string> = {
   "settings.blocked": "Αποκλεισμένοι",
   "settings.blockedNone": "Δεν έχεις αποκλείσει κανέναν.",
   "settings.storageNote":
-    "Τα μηνύματα αποθηκεύονται στους servers μας και δεν είναι κρυπτογραφημένα από άκρη σε άκρη. Το email σου δεν δίνεται πουθενά χωρίς να το πεις εσύ, και δεν ζητάμε ποτέ τηλέφωνο.",
+    "Μηνύματα και αρχεία κρυπτογραφούνται από άκρη σε άκρη: ο server μας κρατάει μόνο ανακατεμένα δεδομένα που δεν μπορεί να διαβάσει. Το email σου δεν δίνεται πουθενά χωρίς να το πεις εσύ, και δεν ζητάμε ποτέ τηλέφωνο.",
+  "settings.photo": "Φωτογραφία προφίλ",
+  "settings.photoChange": "Αλλαγή φωτογραφίας",
+  "settings.photoAdd": "Βάλε φωτογραφία",
+  "settings.photoRemove": "Αφαίρεση",
+  "settings.photoHint": "Τη βλέπουν μόνο όσοι μιλάτε. Τοποθεσία και στοιχεία κάμερας σβήνονται πριν ανέβει.",
+  "settings.security": "Κρυπτογράφηση και συσκευές",
+  "settings.securityText":
+    "Τα μηνύματά σου κλειδώνουν σε αυτή τη συσκευή με κλειδί που δεν φεύγει ποτέ από αυτήν. Κάθε συσκευή που χρησιμοποιείς έχει το δικό της.",
+  "settings.keyWarning":
+    "Αν σβήσεις τα δεδομένα αυτού του browser, χάνεται και το κλειδί του, και τα παλιότερα μηνύματα δεν ανοίγουν πια εδώ.",
+  "settings.ephemeral":
+    "Αυτός ο browser δεν μπορεί να κρατήσει το κλειδί, οπότε τα μηνύματα διαβάζονται μόνο μέχρι να κλείσεις το Mila.",
+  "settings.thisDevice": "Αυτή η συσκευή",
+  "settings.fingerprint": "Αποτύπωμα",
+  "settings.lastSeen": "Τελευταία χρήση {date}",
+  "settings.revoke": "Αφαίρεση",
+  "settings.revokeTitle": "Αφαίρεση αυτής της συσκευής;",
+  "settings.revokeText":
+    "Σταματάει αμέσως να λαμβάνει νέα μηνύματα. Όσα έχει ήδη μένουν σε αυτήν.",
+  "settings.legacyTitle": "Παλιότερα μηνύματα",
+  "settings.legacyText":
+    "{n} μηνύματα που έστειλες πριν από την κρυπτογράφηση είναι ακόμα αποθηκευμένα σε απλό κείμενο στον server μας.",
+  "settings.legacyDelete": "Διαγραφή τους για όλους",
+  "settings.legacyConfirm":
+    "Φεύγουν από κάθε συνομιλία, για σένα και για όσους τα έστειλες. Δεν γυρίζει πίσω.",
+  "settings.legacyDone": "Έγινε. Διαγράφηκαν {n} μηνύματα.",
 
   "push.toggle": "Ειδοποίησέ με για νέα μηνύματα",
   "push.toggleHint": "Σε αυτή τη συσκευή, ακόμα κι όταν το Mila είναι κλειστό",
@@ -593,6 +701,26 @@ const el: Record<TKey, string> = {
   "err.adminOnly": "Αυτό μπορεί να το κάνει μόνο διαχειριστής της ομάδας.",
   "err.pushSave": "Οι ειδοποιήσεις δεν ενεργοποιήθηκαν σε αυτή τη συσκευή.",
   "err.pushUnavailable": "Οι ειδοποιήσεις δεν είναι ακόμα διαθέσιμες. Δοκίμασε αργότερα.",
+  "err.avatar": "Η φωτογραφία δεν άλλαξε.",
+  "err.avatarType": "Διάλεξε αρχείο εικόνας (JPEG, PNG ή παρόμοιο).",
+  "err.noCrypto":
+    "Αυτός ο browser δεν μπορεί να κρυπτογραφήσει μηνύματα. Άνοιξε το Mila από https σε ενημερωμένο browser.",
+  "err.device":
+    "Η κρυπτογράφηση δεν στήθηκε σε αυτή τη συσκευή. Έλεγξε τη σύνδεση και δοκίμασε ξανά.",
+  "err.download": "Το αρχείο δεν άνοιξε.",
+  "err.limitUploads": "Έστειλες πολλά αρχεία τελευταία. Δοκίμασε ξανά αργότερα.",
+  "err.limitGeneric": "Το κάνεις πολύ συχνά. Δοκίμασε ξανά αργότερα.",
+  "err.limitMessages": "Στέλνεις πολύ γρήγορα. Περίμενε λίγο και ξαναδοκίμασε.",
+  "err.limitRequests": "Ξεκίνησες πολλές νέες συνομιλίες τελευταία. Δοκίμασε ξανά αργότερα.",
+  "err.limitLookup": "Πολλές αναζητήσεις email για τώρα. Δοκίμασε ξανά σε μία ώρα.",
+  "err.tooManyContacts": "Το αρχείο έχει πάνω από 500 διευθύνσεις email.",
+  "err.waitForAccept": "Μέχρι να δεχτεί το αίτημά σου, μπορείς να στείλεις έως 3 μηνύματα.",
+  "err.recipientNoKeys":
+    "Πρέπει να ανοίξει το Mila μία φορά πριν μπορέσεις να του στείλεις κρυπτογραφημένο μήνυμα.",
+  "err.mustEncrypt": "Ανανέωσε το Mila για να πάρεις την τελευταία έκδοση.",
+  "err.signupBusy": "Δεν φτιάχνονται νέοι λογαριασμοί αυτή τη στιγμή. Δοκίμασε ξανά σε λίγο.",
+
+  "export.otherDevice": "Κρυπτογραφημένο για άλλη συσκευή σου· δεν ανοίγει εδώ.",
 };
 
 const dictionaries: Record<Lang, Record<TKey, string>> = { en, el };
@@ -614,10 +742,19 @@ const KNOWN_ERRORS: Array<[RegExp, TKey]> = [
   [/already registered|already been registered/i, "err.alreadyRegistered"],
   [/password should be at least/i, "err.passwordShort"],
   [/should be different from the old password/i, "err.samePassword"],
+  [/rate limit exceeded: message/i, "err.limitMessages"],
+  [/rate limit exceeded: contact_request|too many pending requests/i, "err.limitRequests"],
+  [/rate limit exceeded: (user_lookup|contact_match|contact_import)/i, "err.limitLookup"],
+  [/rate limit exceeded: signup|database error saving new user/i, "err.signupBusy"],
+  [/rate limit exceeded:/i, "err.limitGeneric"],
+  [/too many contacts in one file/i, "err.tooManyContacts"],
+  [/wait until your request is accepted/i, "err.waitForAccept"],
+  [/recipient has not set up encryption/i, "err.recipientNoKeys"],
+  [/unencrypted messages are not accepted|messages must be encrypted|could not find the function public\.send_message/i, "err.mustEncrypt"],
   [/rate limit|too many requests/i, "err.rateLimit"],
   [/failed to fetch|networkerror|load failed|network request failed/i, "err.network"],
   [/cannot send messages to this conversation/i, "err.cannotSend"],
-  [/row-level security policy for table "messages"/i, "err.cannotSend"],
+  [/row-level security policy for table "messages"|permission denied for table messages/i, "err.mustEncrypt"],
   [/message is too long/i, "err.tooLong"],
   [/only the sender can delete/i, "err.onlySender"],
   [/only add people you already chat with/i, "err.onlyContacts"],

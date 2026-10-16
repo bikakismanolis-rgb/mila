@@ -8,6 +8,8 @@ import { supabase } from "./supabase";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { t, translateError } from "./i18n";
 import type { TKey } from "./i18n";
+import * as e2ee from "./e2ee";
+import type { DeviceKeys, E2ee, MessagePlain, Recipient } from "./e2ee";
 
 export type Privacy = {
   discover: "everyone" | "contacts" | "nobody";
@@ -25,9 +27,13 @@ export type User = {
    *  email του (από το οποίο θα έβγαινε). */
   username: string | null;
   bio: string;
+  /** Path στον private bucket «avatars», αν δικαιούμαι να τη δω. */
+  avatarPath?: string | null;
+  /** Έτοιμο για <img src>: signed URL της φωτογραφίας ή τα αρχικά του ονόματος. */
   avatar: string;
   deleted?: boolean;
-  privacy: Privacy;
+  /** Μόνο για τον εαυτό μου· για τους άλλους ο server δεν τις στέλνει. */
+  privacy: Privacy | null;
 };
 
 export type Member = User & { role?: "member" | "admin" };
@@ -38,8 +44,12 @@ export type Attachment = {
   mime: string;
   size: number;
   path: string;
+  /** Για εικόνες: blob: URL (κρυπτογραφημένες) ή signed URL (παλιές). */
   url?: string;
-};
+  /** Κλειδί και iv του αρχείου, από το κρυπτογραφημένο μήνυμα. */
+  key?: string;
+  iv?: string;
+}
 
 export type Reaction = { userId: string; emoji: string };
 
@@ -50,6 +60,9 @@ export type ReplyPreview = {
   body: string;
   deleted: boolean;
   attachmentName: string | null;
+  encrypted?: boolean;
+  e2ee?: E2ee | null;
+  undecryptable?: boolean;
 };
 
 export type Msg = {
@@ -60,6 +73,9 @@ export type Msg = {
   body: string;
   deleted?: boolean;
   encrypted?: boolean;
+  e2ee?: E2ee | null;
+  /** Κρυπτογραφημένο, αλλά όχι για αυτή τη συσκευή (π.χ. στάλθηκε πριν υπάρξει). */
+  undecryptable?: boolean;
   kind?: string;
   createdAt: string;
   readBy: string[];
@@ -87,10 +103,25 @@ export type NewAttachment = {
   path: string;
   name: string;
   mime: string;
+  /** Μέγεθος του αρχικού αρχείου. */
   size: number;
+  /** Μέγεθος αυτού που ανέβηκε (κρυπτογραφημένο, λίγο μεγαλύτερο). */
+  uploadSize: number;
+  key: string;
+  iv: string;
+};
+
+export type Device = {
+  id: string;
+  label: string;
+  publicKey: string;
+  createdAt: string;
+  lastSeenAt: string;
+  active: boolean;
 };
 
 const BUCKET = "message-media";
+const AVATARS = "avatars";
 const MAX_UPLOAD = 15 * 1024 * 1024;
 /** Πόσα μηνύματα έρχονται ανά σελίδα. Ίδιο με το default του list_messages. */
 export const PAGE_SIZE = 50;
@@ -112,16 +143,96 @@ async function currentUserId(): Promise<string> {
   return data.user.id;
 }
 
-const dicebear = (seed: string) =>
-  `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(seed)}&backgroundColor=6d5dfc`;
+/** Ίδιο, χωρίς κλήση στον server (από τη συνεδρία που κρατάει ο browser). Για
+ *  ό,τι τρέχει σε κάθε ανανέωση της λίστας ή σε κάθε μήνυμα. */
+async function sessionUserId(): Promise<string> {
+  const { data } = await db().auth.getSession();
+  if (!data.session?.user) throw new Error(t("err.signedOut"));
+  return data.session.user.id;
+}
 
 /** «@username», ή τίποτα αν δεν υπάρχει. */
 export const handleOf = (user: { username: string | null }) =>
   user.username ? `@${user.username}` : "";
 
-/** Εικονίδιο ομάδας: ίδια υπηρεσία, άλλο χρώμα, ώστε να ξεχωρίζει με μια ματιά. */
-export const groupAvatar = (name: string) =>
-  `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(name || "?")}&backgroundColor=272634`;
+// Τα αρχικά τα ζωγραφίζει το ίδιο το app. Πριν έρχονταν από την dicebear.com,
+// που μάθαινε έτσι το όνομα κάθε επαφής και την IP όποιου άνοιγε τη λίστα.
+const AVATAR_COLORS = ["#6d5dfc", "#2f80ed", "#1f9d7a", "#d9822b", "#c2417a", "#7a5af8"];
+
+function initialsAvatar(name: string, background?: string): string {
+  const letters =
+    (name || "?")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => [...part][0] || "")
+      .join("")
+      .toUpperCase() || "?";
+  let hash = 0;
+  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  const fill = background || AVATAR_COLORS[hash % AVATAR_COLORS.length];
+  const safe = letters.replace(/[<>&'"]/g, "");
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
+    `<rect width="64" height="64" fill="${fill}"/>` +
+    `<text x="32" y="32" dy="0.35em" text-anchor="middle" fill="#fff" ` +
+    `font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="26" font-weight="600">${safe}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/** Εικονίδιο ομάδας: σκούρο, ώστε να ξεχωρίζει από τους ανθρώπους με μια ματιά. */
+export const groupAvatar = (name: string) => initialsAvatar(name || "?", "#272634");
+
+// Signed URLs φωτογραφιών, για να μη ζητάμε καινούργιο σε κάθε ανανέωση της
+// λίστας. Ισχύουν μία ώρα· τα ανανεώνουμε λίγο πριν.
+const avatarUrls = new Map<string, { url: string; until: number }>();
+
+async function withAvatars<T extends User>(users: T[]): Promise<T[]> {
+  const now = Date.now();
+  const missing = [
+    ...new Set(
+      users
+        .map((u) => u.avatarPath)
+        .filter((p): p is string => Boolean(p))
+        .filter((p) => (avatarUrls.get(p)?.until || 0) < now),
+    ),
+  ];
+  if (missing.length) {
+    const { data } = await db()
+      .storage.from(AVATARS)
+      .createSignedUrls(missing, 3600);
+    for (const item of data || [])
+      if (item.path && item.signedUrl)
+        avatarUrls.set(item.path, {
+          url: item.signedUrl,
+          until: now + 50 * 60 * 1000,
+        });
+  }
+  return users.map((u) => ({
+    ...u,
+    avatar:
+      (u.avatarPath && avatarUrls.get(u.avatarPath)?.url) ||
+      initialsAvatar(u.name),
+  }));
+}
+
+/** Από το profile_payload της βάσης στο User της οθόνης. */
+function fromPayload<T extends Partial<User>>(raw: T): T & User {
+  return {
+    ...raw,
+    email: raw.email ?? null,
+    name: raw.name || "",
+    username: raw.username ?? null,
+    bio: raw.bio || "",
+    avatarPath: raw.avatarPath ?? null,
+    avatar: "",
+    privacy: raw.privacy ?? null,
+  } as T & User;
+}
+
+async function usersFrom(data: unknown): Promise<User[]> {
+  return withAvatars(((data || []) as Partial<User>[]).map(fromPayload));
+}
 
 type ProfileRow = {
   id: string;
@@ -146,7 +257,8 @@ function toUser(row: ProfileRow): User {
       row.email.split("@")[0].replace(/[^a-z0-9_.]/g, "") ||
       "user",
     bio: row.bio || "",
-    avatar: row.avatar_path || dicebear(row.display_name),
+    avatarPath: row.avatar_path,
+    avatar: initialsAvatar(row.display_name),
     privacy: {
       discover: row.discover_by_email,
       showEmail: row.show_email,
@@ -182,7 +294,8 @@ export async function getMe(): Promise<User> {
     .eq("id", uid)
     .single();
   if (error || !data) fail("err.loadProfile", error);
-  return toUser(data as ProfileRow);
+  const [me] = await withAvatars([toUser(data as ProfileRow)]);
+  return me;
 }
 
 export async function updateMe(patch: {
@@ -207,7 +320,270 @@ export async function updateMe(patch: {
     .select("*")
     .single();
   if (error || !data) fail("err.saveProfile", error);
-  return toUser(data as ProfileRow);
+  const [me] = await withAvatars([toUser(data as ProfileRow)]);
+  return me;
+}
+
+// ---------------------------------------------------------------------------
+// Φωτογραφία προφίλ
+// ---------------------------------------------------------------------------
+
+/**
+ * Ξαναζωγραφίζει την εικόνα σε 256x256 (κεντραρισμένο τετράγωνο) και τη στέλνει
+ * ως JPEG. Έτσι ανεβαίνουν λίγα KB, και φεύγουν τα EXIF της φωτογραφίας
+ * (τοποθεσία, ώρα, μοντέλο κινητού): ο καμβάς κρατάει μόνο τα pixels.
+ */
+async function squareJpeg(file: File, size = 256): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const side = Math.min(bitmap.width, bitmap.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error(t("err.avatar"));
+    ctx.drawImage(
+      bitmap,
+      (bitmap.width - side) / 2,
+      (bitmap.height - side) / 2,
+      side,
+      side,
+      0,
+      0,
+      size,
+      size,
+    );
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.86),
+    );
+    if (!blob) throw new Error(t("err.avatar"));
+    return blob;
+  } finally {
+    bitmap.close();
+  }
+}
+
+export async function setAvatar(file: File): Promise<User> {
+  if (!file.type.startsWith("image/")) throw new Error(t("err.avatarType"));
+  const uid = await currentUserId();
+  let blob: Blob;
+  try {
+    blob = await squareJpeg(file);
+  } catch {
+    throw new Error(t("err.avatarType"));
+  }
+  const path = `${uid}/${crypto.randomUUID()}.jpg`;
+  const { error: uploadError } = await db()
+    .storage.from(AVATARS)
+    .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+  if (uploadError)
+    throw new Error(
+      /row-level security/i.test(uploadError.message)
+        ? t("err.limitGeneric")
+        : translateError(uploadError.message) || t("err.avatar"),
+    );
+
+  const { data, error } = await db().rpc("set_my_avatar", { path });
+  if (error) {
+    void db().storage.from(AVATARS).remove([path]);
+    fail("err.avatar", error);
+  }
+  const previous = (data as { previous?: string | null } | null)?.previous;
+  if (previous) void db().storage.from(AVATARS).remove([previous]);
+  return getMe();
+}
+
+export async function removeAvatar(): Promise<User> {
+  const { data, error } = await db().rpc("clear_my_avatar");
+  if (error) fail("err.avatar", error);
+  const previous = (data as { previous?: string | null } | null)?.previous;
+  if (previous) await db().storage.from(AVATARS).remove([previous]);
+  return getMe();
+}
+
+// ---------------------------------------------------------------------------
+// Συσκευή και κλειδιά κρυπτογράφησης
+// ---------------------------------------------------------------------------
+
+let deviceFor: { userId: string; ready: Promise<DeviceKeys> } | null = null;
+
+/**
+ * Τα κλειδιά αυτής της συσκευής, δηλωμένα στον server. Η πρώτη κλήση τα
+ * φτιάχνει (αν χρειάζεται) και τα δηλώνει· οι επόμενες παίρνουν το ίδιο.
+ */
+export function ensureDevice(): Promise<DeviceKeys> {
+  const ready = (async () => {
+    const uid = await sessionUserId();
+    if (deviceFor?.userId === uid) return deviceFor.ready;
+    const promise = registerThisDevice(uid);
+    deviceFor = { userId: uid, ready: promise };
+    // Αν αποτύχει (π.χ. δίκτυο), η επόμενη κλήση ξαναπροσπαθεί.
+    promise.catch(() => {
+      if (deviceFor?.ready === promise) deviceFor = null;
+    });
+    return promise;
+  })();
+  return ready;
+}
+
+function deviceLabel(): string {
+  const ua = navigator.userAgent;
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /Firefox\//.test(ua)
+      ? "Firefox"
+      : /Chrome\//.test(ua)
+        ? "Chrome"
+        : /Safari\//.test(ua)
+          ? "Safari"
+          : "Browser";
+  const system = /iPhone|iPad/.test(ua)
+    ? "iOS"
+    : /Android/.test(ua)
+      ? "Android"
+      : /Mac OS X/.test(ua)
+        ? "Mac"
+        : /Windows/.test(ua)
+          ? "Windows"
+          : /Linux/.test(ua)
+            ? "Linux"
+            : "";
+  return [browser, system].filter(Boolean).join(" · ");
+}
+
+async function registerThisDevice(uid: string): Promise<DeviceKeys> {
+  if (!e2ee.supported) throw new Error(t("err.noCrypto"));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const device = await e2ee.loadOrCreateDevice(uid);
+    const { data, error } = await db().rpc("register_device", {
+      p_public_key: device.publicKey,
+      p_label: deviceLabel(),
+    });
+    if (error) fail("err.device", error);
+    const result = data as { id: string; revoked: boolean };
+    if (!result.revoked) {
+      return device.deviceId === result.id
+        ? device
+        : e2ee.rememberDeviceId(device, result.id);
+    }
+    // Ανακλήθηκε από άλλη συσκευή: τα παλιά κλειδιά δεν ισχύουν, φτιάχνουμε νέα.
+    await e2ee.forgetDevice(uid);
+  }
+  throw new Error(t("err.device"));
+}
+
+export async function listMyDevices(): Promise<Device[]> {
+  const { data, error } = await db().rpc("list_my_devices");
+  if (error) fail("err.device", error);
+  return (data || []) as Device[];
+}
+
+export async function revokeDevice(deviceId: string): Promise<void> {
+  const { error } = await db().rpc("revoke_device", { device: deviceId });
+  if (error) fail("err.device", error);
+  deviceKeyCache.clear();
+}
+
+/** Ο κωδικός ασφαλείας ανάμεσα σε εμένα και κάποιον άλλον (12 πεντάδες). */
+export async function safetyCodeWith(userId: string): Promise<string[]> {
+  const uid = await currentUserId();
+  await ensureDevice();
+  const [mine, theirs] = await Promise.all([
+    db().rpc("user_device_keys", { target: uid }),
+    db().rpc("user_device_keys", { target: userId }),
+  ]);
+  if (mine.error || theirs.error) fail("err.device", mine.error || theirs.error);
+  const theirKeys = (theirs.data || []) as string[];
+  if (!theirKeys.length) return [];
+  return e2ee.safetyCode(
+    { userId: uid, keys: (mine.data || []) as string[] },
+    { userId, keys: theirKeys },
+  );
+}
+
+export const fingerprint = e2ee.fingerprint;
+
+// Ποιες συσκευές παίρνουν κλειδί για μια συνομιλία. Λίγα δευτερόλεπτα στη
+// μνήμη· αν άλλαξε κάτι στο μεταξύ (νέο μέλος, νέα συσκευή), ο server το λέει
+// στην αποστολή και ξαναζητάμε.
+const deviceKeyCache = new Map<string, { at: number; list: Recipient[] }>();
+
+async function recipientsFor(
+  conversationId: string,
+  fresh = false,
+): Promise<Recipient[]> {
+  const cached = deviceKeyCache.get(conversationId);
+  if (!fresh && cached && Date.now() - cached.at < 60_000) return cached.list;
+  const { data, error } = await db().rpc("conversation_device_keys", {
+    conversation: conversationId,
+  });
+  if (error) fail("err.send", error);
+  const list = ((data || []) as { deviceId: string; publicKey: string }[]).map(
+    (d) => ({ deviceId: d.deviceId, publicKey: d.publicKey }),
+  );
+  deviceKeyCache.set(conversationId, { at: Date.now(), list });
+  return list;
+}
+
+// ---------------------------------------------------------------------------
+// Αποκρυπτογράφηση
+// ---------------------------------------------------------------------------
+// Ό,τι αποκρυπτογραφήθηκε μένει στη μνήμη (όχι στο δίσκο) για όσο είναι
+// ανοιχτό το app: η λίστα συνομιλιών ανανεώνεται σε κάθε μήνυμα, και δεν
+// αξίζει να ξαναγίνεται η ίδια δουλειά. Από εδώ γίνεται και η αναζήτηση.
+
+const plainCache = new Map<string, MessagePlain | null>();
+const knownMessages = new Map<string, Msg>();
+
+async function openPlain(
+  device: DeviceKeys,
+  id: string,
+  conversationId: string,
+  senderId: string,
+  box: E2ee,
+): Promise<MessagePlain | null> {
+  if (plainCache.has(id) && plainCache.get(id)) return plainCache.get(id)!;
+  const plain = await e2ee.decryptMessage(device, conversationId, senderId, box);
+  plainCache.set(id, plain);
+  return plain;
+}
+
+async function decryptOne(device: DeviceKeys, m: Msg): Promise<Msg> {
+  let out: Msg = m;
+  if (m.e2ee && !m.deleted) {
+    const plain = await openPlain(device, m.id, m.conversationId, m.senderId, m.e2ee);
+    if (!plain) out = { ...out, body: "", undecryptable: true, attachment: null };
+    else {
+      out = { ...out, body: plain.t, undecryptable: false };
+      if (plain.f && m.attachment)
+        out.attachment = {
+          ...m.attachment,
+          name: plain.f.n,
+          mime: plain.f.m,
+          size: plain.f.s,
+          key: plain.f.k,
+          iv: plain.f.i,
+        };
+    }
+  }
+  const reply = m.replyTo;
+  if (reply?.e2ee && !reply.deleted) {
+    const plain = await openPlain(device, reply.id, m.conversationId, reply.senderId, reply.e2ee);
+    out = {
+      ...out,
+      replyTo: plain
+        ? { ...reply, body: plain.t.slice(0, 140), attachmentName: plain.f?.n || null }
+        : { ...reply, body: "", undecryptable: true },
+    };
+  }
+  if (out.body || out.attachment) knownMessages.set(out.id, out);
+  return out;
+}
+
+async function decryptAll(messages: Msg[]): Promise<Msg[]> {
+  if (!messages.some((m) => m.e2ee || m.replyTo?.e2ee)) return messages;
+  const device = await ensureDevice();
+  return Promise.all(messages.map((m) => decryptOne(device, m)));
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +594,40 @@ export async function updateMe(patch: {
 export async function exportMyData(): Promise<unknown> {
   const { data, error } = await db().rpc("export_my_data");
   if (error) fail("err.export", error);
-  return data;
+  // Ο server δεν μπορεί να διαβάσει τα κρυπτογραφημένα μηνύματα· τα ανοίγουμε
+  // εδώ, ώστε το αρχείο να έχει το κείμενό τους και όχι ciphertext.
+  const payload = data as {
+    messages?: Array<Record<string, unknown> & { conversation_id: string; e2ee?: E2ee | null }>;
+  };
+  if (payload?.messages?.some((m) => m.e2ee)) {
+    const uid = await currentUserId();
+    const device = await ensureDevice();
+    payload.messages = await Promise.all(
+      payload.messages.map(async ({ e2ee: box, ...rest }) => {
+        if (!box) return rest;
+        const plain = await e2ee.decryptMessage(device, rest.conversation_id, uid, box);
+        return plain
+          ? { ...rest, body: plain.t, attachment_name: plain.f?.n ?? null }
+          : { ...rest, body: null, note: t("export.otherDevice") };
+      }),
+    );
+  }
+  return payload;
+}
+
+export async function countMyUnencryptedMessages(): Promise<number> {
+  const { data, error } = await db().rpc("count_my_unencrypted_messages");
+  if (error) return 0;
+  return Number(data) || 0;
+}
+
+/** Σβήνει για όλους τα παλιά μου μηνύματα που είναι σε απλό κείμενο. */
+export async function deleteMyUnencryptedMessages(): Promise<number> {
+  const { data, error } = await db().rpc("delete_my_unencrypted_messages");
+  if (error) fail("err.deleteMessage", error);
+  const result = data as { deleted?: number; paths?: string[] } | null;
+  await removeFiles((result?.paths || []).filter(Boolean));
+  return result?.deleted || 0;
 }
 
 /**
@@ -230,8 +639,21 @@ export async function exportMyData(): Promise<unknown> {
  * μας νοιάζει — γι' αυτό το catch είναι σκόπιμα σιωπηλό.
  */
 export async function deleteMyAccount(): Promise<void> {
+  const uid = await currentUserId();
+  // Η φωτογραφία σβήνεται από εδώ, όσο υπάρχει ακόμα λογαριασμός για να το
+  // ζητήσει (η βάση δεν επιτρέπεται να σβήνει αρχεία η ίδια).
+  const { data: me } = await db()
+    .from("profiles")
+    .select("avatar_path")
+    .eq("id", uid)
+    .maybeSingle();
+  if (me?.avatar_path)
+    await db().storage.from(AVATARS).remove([me.avatar_path]).catch(() => undefined);
+
   const { error } = await db().rpc("delete_my_account");
   if (error) fail("err.deleteAccount", error);
+  // Τα κλειδιά αυτής της συσκευής δεν χρησιμεύουν πια σε τίποτα.
+  await e2ee.forgetDevice(uid);
   await db()
     .auth.signOut()
     .catch(() => undefined);
@@ -241,6 +663,10 @@ export async function deleteMyAccount(): Promise<void> {
 // Αναζήτηση ανθρώπων
 // ---------------------------------------------------------------------------
 
+/** Ολόκληρη διεύθυνση email; Μόνο τότε βγαίνουν άνθρωποι που δεν ξέρω ήδη. */
+export const looksLikeEmail = (term: string) =>
+  /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(term.trim());
+
 export async function searchUsers(term: string): Promise<User[]> {
   const trimmed = term.trim();
   if (trimmed.length < 2) return [];
@@ -248,7 +674,7 @@ export async function searchUsers(term: string): Promise<User[]> {
     search_term: trimmed,
   });
   if (error) fail("err.search", error);
-  return (data || []) as User[];
+  return usersFrom(data);
 }
 
 export async function matchContacts(hashes: string[]): Promise<User[]> {
@@ -257,44 +683,91 @@ export async function matchContacts(hashes: string[]): Promise<User[]> {
     email_hashes: hashes.slice(0, 500),
   });
   if (error) fail("err.matchContacts", error);
-  return (data || []) as User[];
+  return usersFrom(data);
 }
 
 // ---------------------------------------------------------------------------
 // Συνημμένα
 // ---------------------------------------------------------------------------
 
-// Ο bucket message-media είναι private, οπότε κάθε συνημμένο θέλει
-// βραχύβιο signed URL. Τα ζητάμε μαζεμένα για να μη γίνει ένα request
-// ανά μήνυμα.
-async function withSignedUrls(messages: Msg[]): Promise<Msg[]> {
-  const paths = messages
-    .map((m) => m.attachment?.path)
-    .filter((p): p is string => Boolean(p));
-  if (!paths.length) return messages;
+// Ο bucket message-media είναι private. Τα ΠΑΛΙΑ συνημμένα (πριν την
+// κρυπτογράφηση) θέλουν βραχύβιο signed URL. Τα κρυπτογραφημένα κατεβαίνουν,
+// αποκρυπτογραφούνται εδώ και γίνονται blob: URL, που ζει μόνο σε αυτή τη
+// σελίδα. Τις εικόνες τις ανοίγουμε αμέσως (φαίνονται μέσα στη συνομιλία)· τα
+// υπόλοιπα αρχεία μόνο όταν τα πατήσει ο χρήστης (openAttachment).
+const decryptedFiles = new Map<string, string>();
 
-  const { data } = await db()
-    .storage.from(BUCKET)
-    .createSignedUrls([...new Set(paths)], 3600);
+async function decryptedUrl(attachment: Attachment): Promise<string> {
+  const known = decryptedFiles.get(attachment.path);
+  if (known) return known;
+  const { data, error } = await db().storage.from(BUCKET).download(attachment.path);
+  if (error || !data) throw new Error(t("err.download"));
+  const plain = await e2ee.decryptFile(
+    await data.arrayBuffer(),
+    attachment.key!,
+    attachment.iv!,
+  );
+  const url = URL.createObjectURL(new Blob([plain], { type: attachment.mime }));
+  decryptedFiles.set(attachment.path, url);
+  // Όριο στη μνήμη: οι παλαιότερες εικόνες απελευθερώνονται.
+  if (decryptedFiles.size > 150) {
+    const [oldest, oldUrl] = decryptedFiles.entries().next().value!;
+    decryptedFiles.delete(oldest);
+    URL.revokeObjectURL(oldUrl);
+  }
+  return url;
+}
+
+async function withMedia(messages: Msg[]): Promise<Msg[]> {
+  const legacy = messages
+    .map((m) => m.attachment)
+    .filter((a): a is Attachment => Boolean(a?.path && !a.key))
+    .map((a) => a.path);
 
   const urls = new Map<string, string>();
-  for (const item of data || []) {
-    if (item.path && item.signedUrl) urls.set(item.path, item.signedUrl);
+  if (legacy.length) {
+    const { data } = await db()
+      .storage.from(BUCKET)
+      .createSignedUrls([...new Set(legacy)], 3600);
+    for (const item of data || [])
+      if (item.path && item.signedUrl) urls.set(item.path, item.signedUrl);
   }
 
-  return messages.map((m) =>
-    m.attachment?.path
-      ? {
-          ...m,
-          attachment: {
-            ...m.attachment,
-            url: urls.get(m.attachment.path) || "",
-          },
-        }
-      : m,
+  return Promise.all(
+    messages.map(async (m) => {
+      const a = m.attachment;
+      if (!a?.path) return m;
+      if (!a.key) return { ...m, attachment: { ...a, url: urls.get(a.path) || "" } };
+      if (!a.mime.startsWith("image/")) return m;
+      try {
+        return { ...m, attachment: { ...a, url: await decryptedUrl(a) } };
+      } catch {
+        return m;
+      }
+    }),
   );
 }
 
+/** Ανοίγει / κατεβάζει ένα συνημμένο που δεν φαίνεται ήδη στην οθόνη. */
+export async function openAttachment(attachment: Attachment): Promise<void> {
+  const url = attachment.key ? await decryptedUrl(attachment) : attachment.url;
+  if (!url) throw new Error(t("err.download"));
+  const link = document.createElement("a");
+  link.href = url;
+  if (attachment.key) link.download = attachment.name;
+  else {
+    link.target = "_blank";
+    link.rel = "noreferrer";
+  }
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+/**
+ * Κρυπτογραφεί το αρχείο εδώ και ανεβάζει μόνο το αποτέλεσμα. Όνομα, τύπος και
+ * κλειδί του δεν πάνε στο storage· πάνε μέσα στο κρυπτογραφημένο μήνυμα.
+ */
 export async function uploadAttachment(
   file: File,
   conversationId: string,
@@ -302,26 +775,32 @@ export async function uploadAttachment(
   if (file.size > MAX_UPLOAD) throw new Error(t("err.fileTooLarge"));
 
   const uid = await currentUserId();
-  const extension = file.name.includes(".")
-    ? file.name.split(".").pop()!.slice(0, 10).toLowerCase()
-    : "bin";
+  const sealed = await e2ee.encryptFile(await file.arrayBuffer());
   // Ο πρώτος φάκελος ΠΡΕΠΕΙ να είναι το uid: το απαιτούν το policy του storage
-  // και το send_message, που δεν δέχεται αρχείο από ξένο φάκελο.
-  const path = `${uid}/${conversationId}/${crypto.randomUUID()}.${extension}`;
+  // και το send_message. Χωρίς κατάληξη: δεν λέμε στον server τι αρχείο είναι.
+  const path = `${uid}/${conversationId}/${crypto.randomUUID()}`;
 
   const { error } = await db()
     .storage.from(BUCKET)
-    .upload(path, file, {
-      contentType: file.type || "application/octet-stream",
+    .upload(path, sealed.blob, {
+      contentType: "application/octet-stream",
       upsert: false,
     });
-  if (error) fail("err.upload", error);
+  if (error)
+    throw new Error(
+      /row-level security/i.test(error.message)
+        ? t("err.limitUploads")
+        : translateError(error.message) || t("err.upload"),
+    );
 
   return {
     path,
     name: file.name.slice(0, 180),
     mime: file.type || "application/octet-stream",
     size: file.size,
+    uploadSize: sealed.blob.size,
+    key: sealed.key,
+    iv: sealed.iv,
   };
 }
 
@@ -340,7 +819,24 @@ async function removeFiles(paths: string[]): Promise<void> {
 export async function listChats(): Promise<Chat[]> {
   const { data, error } = await db().rpc("list_conversations");
   if (error) fail("err.loadChats", error);
-  return (data || []) as Chat[];
+  const raw = (data || []) as Chat[];
+
+  // Όλες οι φωτογραφίες με μία κλήση, όχι μία ανά συνομιλία.
+  const people = await withAvatars(
+    raw.flatMap((c) => c.others.map((u) => fromPayload(u) as Member)),
+  );
+  const byId = new Map(people.map((u) => [u.id, u]));
+
+  const lasts = await decryptAll(
+    raw.map((c) => c.last).filter((m): m is Msg => Boolean(m)),
+  ).catch(() => null);
+  const lastById = new Map((lasts || []).map((m) => [m.id, m]));
+
+  return raw.map((c) => ({
+    ...c,
+    others: c.others.map((u) => ({ ...(byId.get(u.id) || fromPayload(u)), role: u.role })),
+    last: c.last ? lastById.get(c.last.id) || { ...c.last, undecryptable: Boolean(c.last.e2ee) } : c.last,
+  }));
 }
 
 /**
@@ -359,7 +855,7 @@ export async function listMessages(
   if (error) fail("err.loadMessages", error);
   const page = (data || []) as Msg[];
   return {
-    messages: await withSignedUrls(page),
+    messages: await withMedia(await decryptAll(page)),
     hasMore: page.length === PAGE_SIZE,
   };
 }
@@ -368,8 +864,8 @@ export async function listMessages(
 export async function getMessage(messageId: string): Promise<Msg | null> {
   const { data, error } = await db().rpc("get_message", { message: messageId });
   if (error || !data) return null;
-  const [signed] = await withSignedUrls([data as Msg]);
-  return signed;
+  const [ready] = await withMedia(await decryptAll([data as Msg]));
+  return ready;
 }
 
 export async function startChat(userId: string): Promise<string> {
@@ -385,19 +881,45 @@ export async function sendMessage(
   body: string,
   options: { replyTo?: string; attachment?: NewAttachment } = {},
 ): Promise<void> {
-  const { error } = await db().rpc("send_message", {
-    conversation: conversationId,
-    body,
-    client_id: crypto.randomUUID(),
-    reply_to_message: options.replyTo ?? null,
-    attachment: options.attachment ?? null,
-  });
-  if (error) {
-    // Το μήνυμα δεν γράφτηκε, άρα το αρχείο που ανέβηκε δεν θα το δείξει ποτέ
-    // κανείς. Το μαζεύουμε.
-    if (options.attachment) void removeFiles([options.attachment.path]);
-    fail("err.send", error);
+  const uid = await sessionUserId();
+  const device = await ensureDevice();
+  const clientId = crypto.randomUUID();
+  const file = options.attachment;
+  const plain: MessagePlain = { t: body };
+  if (file)
+    plain.f = { n: file.name, m: file.mime, s: file.size, k: file.key, i: file.iv };
+
+  // Δύο προσπάθειες: αν στο μεταξύ μπήκε νέο μέλος ή νέα συσκευή, ο server
+  // απαντάει «out of date» και ξανακρυπτογραφούμε με φρέσκια λίστα κλειδιών.
+  let lastError: { message?: string } | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const recipients = await recipientsFor(conversationId, attempt > 0);
+    const sealed = await e2ee.encryptMessage(
+      device,
+      { conversationId, senderId: uid, clientId },
+      plain,
+      recipients,
+    );
+    const { error } = await db().rpc("send_message", {
+      conversation: conversationId,
+      body: sealed.envelope,
+      client_id: clientId,
+      sender_device: device.deviceId,
+      keys: sealed.keys,
+      reply_to_message: options.replyTo ?? null,
+      attachment: file ? { path: file.path, size: file.uploadSize } : null,
+    });
+    if (!error) {
+      return;
+    }
+    lastError = error;
+    if (!/out of date/i.test(error.message)) break;
   }
+  // Το μήνυμα δεν γράφτηκε, άρα το αρχείο που ανέβηκε δεν θα το δείξει ποτέ
+  // κανείς. Το μαζεύουμε.
+  if (file) void removeFiles([file.path]);
+  if (/unknown sending device/i.test(lastError?.message || "")) deviceFor = null;
+  fail("err.send", lastError);
 }
 
 /**
@@ -430,18 +952,36 @@ export async function react(messageId: string, emoji: string): Promise<void> {
   if (error) fail("err.react", error);
 }
 
+/**
+ * Ο server βλέπει μόνο ciphertext, άρα δεν μπορεί να ψάξει μέσα στα
+ * κρυπτογραφημένα. Ψάχνουμε εδώ, σε ό,τι έχει ήδη ανοίξει αυτή η συσκευή
+ * (λίστα συνομιλιών και ό,τι φορτώθηκε), και ζητάμε από τον server μόνο τα
+ * παλιά, μη κρυπτογραφημένα.
+ */
 export async function searchMessages(
   term: string,
   conversationId?: string,
 ): Promise<Msg[]> {
   const trimmed = term.trim();
   if (trimmed.length < 2) return [];
+  const needle = trimmed.toLocaleLowerCase();
+  const local = [...knownMessages.values()].filter(
+    (m) =>
+      !m.deleted &&
+      (!conversationId || m.conversationId === conversationId) &&
+      (m.body.toLocaleLowerCase().includes(needle) ||
+        (m.attachment?.name || "").toLocaleLowerCase().includes(needle)),
+  );
   const { data, error } = await db().rpc("search_messages", {
     search_term: trimmed,
     conversation: conversationId ?? null,
   });
-  if (error) fail("err.search", error);
-  return (data || []) as Msg[];
+  const legacy = error ? [] : ((data || []) as Msg[]);
+  const merged = new Map<string, Msg>();
+  for (const m of [...local, ...legacy]) merged.set(m.id, m);
+  return [...merged.values()]
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .slice(0, 50);
 }
 
 export async function markRead(conversationId: string): Promise<void> {
@@ -538,7 +1078,7 @@ export async function unblockUser(userId: string): Promise<void> {
 export async function listBlocked(): Promise<User[]> {
   const { data, error } = await db().rpc("list_blocked");
   if (error) fail("err.loadBlocked", error);
-  return (data || []) as User[];
+  return usersFrom(data);
 }
 
 export async function reportUser(

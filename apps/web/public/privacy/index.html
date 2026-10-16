@@ -76,7 +76,7 @@
       </header>
 
       <h1>Privacy policy</h1>
-      <p class="updated">Last updated: 4 August 2026</p>
+      <p class="updated">Last updated: 16 October 2026</p>
 
       <p>
         Mila is a messenger that uses your email address instead of your phone
@@ -86,12 +86,11 @@
 
       <div class="callout">
         <p>
-          <b>Your messages are not end-to-end encrypted.</b> They are stored on
-          our database server as ordinary text. That means we are technically
-          able to read them, and so is anyone who obtains access to the database.
-          We do not read them as a matter of practice, but we will not pretend to
-          a protection we have not built. Do not use Mila for anything that would
-          harm you if it were exposed.
+          <b>Your messages are end-to-end encrypted.</b> Text, photos and files
+          are locked on your device, with a key that never leaves it, before
+          they are sent. Our servers store only the locked version and cannot
+          open it. What we can see is who talks to whom and when, how large an
+          attachment is, group names, reactions, and your profile.
         </p>
       </div>
 
@@ -125,15 +124,34 @@
         </tr>
         <tr>
           <th>Display name, username, bio, photo</th>
-          <td>Whatever you choose to put on your profile. All optional except the name.</td>
+          <td>
+            Whatever you choose to put on your profile. All optional except the
+            name. Strangers who find you by your full email see only your name.
+            Your photo and bio are visible only to people you chat with. Before
+            a photo is uploaded, your device redraws it at a small size, which
+            strips its location and camera details.
+          </td>
         </tr>
         <tr>
           <th>Your messages and attachments</th>
           <td>
-            The content of what you send, the reactions people add, and which
-            group conversations you are in. Stored until the sender deletes a
-            message &ldquo;for everyone&rdquo;, which erases its text and files from our
-            servers. &ldquo;Delete for me&rdquo; only hides a message from your own view.
+            The encrypted form of what you send, which we cannot read, plus who
+            sent it, to which conversation, when, and the size of any file. Also
+            the reactions people add and which group conversations you are in.
+            Stored until the sender deletes a message &ldquo;for everyone&rdquo;, which
+            erases it and its files from our servers. &ldquo;Delete for me&rdquo; only
+            hides a message from your own view. Messages sent before
+            encryption was introduced (October 2026) are stored as plain text
+            until their sender deletes them; Settings offers a button for that.
+          </td>
+        </tr>
+        <tr>
+          <th>Device keys</th>
+          <td>
+            The public half of the encryption key of each device you use, a
+            short label such as &ldquo;Firefox &middot; Windows&rdquo;, and when it was last
+            used. Public keys are what other people&rsquo;s devices need to lock
+            messages for you. The private half never leaves your device.
           </td>
         </tr>
         <tr>
@@ -160,6 +178,15 @@
         <tr>
           <th>Blocks and reports</th>
           <td>Who you blocked, and any abuse reports you filed or that named you.</td>
+        </tr>
+        <tr>
+          <th>Usage counters</th>
+          <td>
+            A record that your account performed an action (sent a message,
+            searched for an email, started a conversation) and when, without
+            its content. Used only to enforce limits that stop spam and
+            stop anyone from checking lists of emails. Deleted after 31 days.
+          </td>
         </tr>
       </table>
 
@@ -222,17 +249,11 @@
             Only if you turn notifications on. Notifications travel through the
             service built into your browser or phone. The content is encrypted
             for your device before it leaves us, so the service can see that a
-            notification was sent and when, but not what it says.
+            notification was sent and when, but not what it says. Notifications
+            never contain the text of a message: we cannot read it either.
           </td>
         </tr>
-        <tr>
-          <th>DiceBear</th>
-          <td>
-            Generates the placeholder avatar shown when you have not uploaded a
-            photo. Your display name is included in the image request. Upload a
-            photo if you would rather it were not.
-          </td>
-        </tr>
+        
       </table>
 
       <h2>How long we keep it</h2>
@@ -291,10 +312,19 @@
 
       <h2>Security</h2>
       <p>
-        Traffic is encrypted in transit. Access to the database is governed by
-        row-level rules so that one account cannot read another's conversations.
-        Passwords are hashed. As stated at the top, message content is not
-        encrypted at rest, which is the most important limitation on this page.
+        Traffic is encrypted in transit. Messages and attachments are also
+        end-to-end encrypted, so even with full access to our database they
+        cannot be read. Access to the database is governed by row-level rules
+        so that one account cannot read another's conversations, and every
+        action is rate limited. Passwords are hashed.
+      </p>
+      <p>
+        The limits, plainly: our encryption does not yet have forward secrecy
+        (if the key on one of your devices is stolen, past messages sent to
+        that device can be opened). A new device cannot read messages sent
+        before it was set up. And because our servers hand out public keys,
+        you should compare the safety code in a contact&rsquo;s details with
+        them in person if you need to be certain no one is in between.
       </p>
 
       <h2>Changes</h2>

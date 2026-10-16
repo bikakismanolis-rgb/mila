@@ -11,7 +11,7 @@
  * κάτω μέρος του αρχείου.
  */
 
-const VERSION = "mila-v2";
+const VERSION = "mila-v3";
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -85,7 +85,10 @@ self.addEventListener("fetch", (event) => {
 // ---------------------------------------------------------------------------
 // Το μήνυμα φτάνει κρυπτογραφημένο από την Edge Function «push» και ο browser
 // το έχει ήδη αποκρυπτογραφήσει πριν φτάσει εδώ. Περιεχόμενο:
-//   { conversationId, messageId, title, body, hasAttachment, isRequest }
+//   { conversationId, messageId, title, body, senderName, isGroup,
+//     hasAttachment, isRequest }
+// Το body είναι πάντα κενό: ο server δεν ξέρει τι γράφει το μήνυμα (είναι
+// κρυπτογραφημένο από άκρη σε άκρη), άρα η ειδοποίηση λέει μόνο «Νέο μήνυμα».
 
 // Ο service worker δεν έχει πρόσβαση στο i18n του app, οπότε τα λίγα κείμενά
 // του είναι εδώ, με την ίδια λογική επιλογής γλώσσας.
@@ -112,9 +115,11 @@ self.addEventListener("push", (event) => {
       // η ειδοποίηση θα ήταν θόρυβος.
       if (windows.some((w) => w.visibilityState === "visible" && w.focused)) return;
 
-      const body =
+      const text =
         data.body ||
-        (data.hasAttachment ? TEXT.file : data.isRequest ? TEXT.request : TEXT.fallback);
+        (data.isRequest ? TEXT.request : data.hasAttachment ? TEXT.file : TEXT.fallback);
+      // Σε ομάδα ο τίτλος είναι το όνομα της ομάδας· το ποιος έγραψε μπαίνει μπροστά.
+      const body = data.isGroup && data.senderName ? `${data.senderName}: ${text}` : text;
       await self.registration.showNotification(data.title || "Mila", {
         body,
         icon: "/icons/icon-192.png",
