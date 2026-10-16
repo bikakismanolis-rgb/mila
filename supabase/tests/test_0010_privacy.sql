@@ -58,6 +58,7 @@ update profiles set bio = 'hello from ' || display_name;
 \set key_alice2 '''AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2'''
 \set key_bob   '''BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB1'''
 \set key_carol '''CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC1'''
+\set key_erin  '''EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE1'''
 \set key_dave  '''DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD1'''
 \set wrapped   '''wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww'''
 \set envelope  '''{"iv":"aaaaaaaaaaaaaaaa","ct":"bbbbbbbbbbbbbbbbbbbbbbbb"}'''
@@ -271,9 +272,45 @@ set role authenticated;
 select start_direct_conversation(:erin) as de \gset
 select jsonb_agg(jsonb_build_object('device', k->>'deviceId', 'key', :wrapped)) as de_keys
 from jsonb_array_elements(conversation_device_keys(:'de')) k \gset
-select test.fails(format($$select public.send_message(%L, %L, gen_random_uuid(), (select id from user_devices where public_key = %L), %L::jsonb)$$,
-  :'de', :envelope, :key_dave, :'de_keys'),
-  'not set up encryption', 'recipient without keys');
+-- (0012) Δεν απορρίπτεται πια: φεύγει με κλειδί μόνο για τον Dave και μένει «σε αναμονή».
+select send_message(:'de', :envelope, gen_random_uuid(),
+  (select id from user_devices where public_key = :key_dave), :'de_keys'::jsonb) as de_msg \gset
+select (:'de_msg'::jsonb)->>'id' as de_id \gset
+select test.ok(((:'de_msg'::jsonb)->>'waiting')::boolean, 'message to someone without keys is waiting');
+select test.ok(my_undelivered_keys((select id from user_devices where public_key = :key_dave)) = '[]'::jsonb,
+  'nothing to deliver while the recipient has no device');
+reset role;
+
+-- Η Erin ανοίγει το νέο app: αποκτά συσκευή.
+select set_config('request.jwt.claim.sub', :erin, false);
+set role authenticated;
+select register_device(:key_erin, 'Phone');
+select test.ok(m->'e2ee'->'keys' = '{}'::jsonb, 'erin has no key yet') from list_messages(:'de') m where m->>'id' = :'de_id';
+-- Η Erin δεν μπορεί να προσθέσει κλειδιά σε μήνυμα του Dave.
+select test.ok(add_message_keys((select id from user_devices where public_key = :key_erin),
+  jsonb_build_array(jsonb_build_object('message', :'de_id', 'device', (select id from user_devices where public_key = :key_erin), 'key', :wrapped))) = 0,
+  'only the sender can add keys');
+reset role;
+
+-- Ο Dave (η ίδια συσκευή που το έστειλε) βλέπει τι περιμένει και το παραδίδει.
+select set_config('request.jwt.claim.sub', :dave, false);
+set role authenticated;
+select my_undelivered_keys((select id from user_devices where public_key = :key_dave)) as pending \gset
+select test.ok(jsonb_array_length(:'pending'::jsonb) = 1, 'one key to deliver');
+select test.ok((:'pending'::jsonb)->0->>'myKey' = :wrapped, 'sender gets its own wrapped key back');
+select test.ok(add_message_keys((select id from user_devices where public_key = :key_dave),
+  jsonb_build_array(jsonb_build_object('message', :'de_id', 'device', (:'pending'::jsonb)->0->>'deviceId', 'key', :wrapped)))
+  = 1, 'key delivered');
+select test.ok(add_message_keys((select id from user_devices where public_key = :key_dave),
+  jsonb_build_array(jsonb_build_object('message', :'de_id', 'device', (:'pending'::jsonb)->0->>'deviceId', 'key', :wrapped)))
+  = 0, 'no double delivery');
+select test.ok(not (get_message(:'de_id')->>'waiting')::boolean, 'no longer waiting');
+select test.ok(my_undelivered_keys((select id from user_devices where public_key = :key_dave)) = '[]'::jsonb,
+  'nothing left to deliver');
+reset role;
+select set_config('request.jwt.claim.sub', :erin, false);
+set role authenticated;
+select test.ok(m->'e2ee'->'keys' <> '{}'::jsonb, 'erin now has a key') from list_messages(:'de') m where m->>'id' = :'de_id';
 reset role;
 
 -- ---------------------------------------------------------------------------
@@ -459,3 +496,16 @@ select test.ok(exists (select 1 from profiles where email = 'trigger-check@examp
   'signup trigger still creates the profile without EXECUTE grants');
 select test.ok(not has_function_privilege('anon', 'public.handle_new_auth_user()', 'EXECUTE'),
   'anon cannot call the trigger function');
+
+-- ---------------------------------------------------------------------------
+-- 11. (0012) Κανένα «ιστορικό» σε νέα συσκευή όποιου είχε ήδη κλειδί
+-- ---------------------------------------------------------------------------
+-- Η Alice είχε κλειδί για τα μηνύματα του Bob· η δεύτερη συσκευή της
+-- (key_alice2) δεν παίρνει παλιά κλειδιά, ακόμα κι αν το ζητήσει ο Bob.
+select set_config('request.jwt.claim.sub', :bob, false);
+set role authenticated;
+select test.ok(not exists (
+  select 1 from jsonb_array_elements(my_undelivered_keys((select id from user_devices where public_key = :key_bob))) x
+  where x->>'deviceId' = (select id::text from user_devices where public_key = :key_alice2)
+), 'no history for a new device of someone who already had a key');
+reset role;

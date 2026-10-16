@@ -76,6 +76,11 @@ export type Msg = {
   e2ee?: E2ee | null;
   /** Κρυπτογραφημένο, αλλά όχι για αυτή τη συσκευή (π.χ. στάλθηκε πριν υπάρξει). */
   undecryptable?: boolean;
+  /** Δεν διαβάζεται ΑΚΟΜΑ: καμία συσκευή μου δεν πήρε κλειδί, και θα το φέρει η
+   *  συσκευή του αποστολέα μόλις ανοίξει (0012). */
+  pendingKey?: boolean;
+  /** Δικό μου μήνυμα που κάποιος δεν έχει ακόμα κλειδί για να το διαβάσει. */
+  waiting?: boolean;
   kind?: string;
   createdAt: string;
   readBy: string[];
@@ -503,6 +508,80 @@ export async function safetyCodeWith(userId: string): Promise<string[]> {
 
 export const fingerprint = e2ee.fingerprint;
 
+// ---------------------------------------------------------------------------
+// Παράδοση κλειδιών αργότερα (0012)
+// ---------------------------------------------------------------------------
+// Μηνύματα που έστειλε αυτή η συσκευή σε κάποιον που τότε δεν είχε κλειδί.
+// Μόλις εκείνος αποκτήσει συσκευή, τους τυλίγουμε το κλειδί από εδώ. Τρέχει
+// μόνο του σε κάθε ανανέωση της λίστας, το πολύ μία φορά στα 15 δευτερόλεπτα.
+
+let delivering: Promise<number> | null = null;
+let lastDelivery = 0;
+
+type Undelivered = {
+  messageId: string;
+  conversationId: string;
+  clientId: string;
+  envelope: string;
+  myKey: string;
+  deviceId: string;
+  publicKey: string;
+};
+
+export function deliverPendingKeys(): Promise<number> {
+  if (delivering) return delivering;
+  if (Date.now() - lastDelivery < 15_000) return Promise.resolve(0);
+  delivering = (async () => {
+    try {
+      const uid = await sessionUserId();
+      const device = await ensureDevice();
+      const { data, error } = await db().rpc("my_undelivered_keys", {
+        p_device: device.deviceId,
+      });
+      const rows = (error ? [] : (data as Undelivered[] | null)) || [];
+      if (!rows.length) return 0;
+
+      const byMessage = new Map<string, { first: Undelivered; to: Recipient[] }>();
+      for (const row of rows) {
+        const entry = byMessage.get(row.messageId) || { first: row, to: [] };
+        entry.to.push({ deviceId: row.deviceId, publicKey: row.publicKey });
+        byMessage.set(row.messageId, entry);
+      }
+
+      const keys: { message: string; device: string; key: string }[] = [];
+      for (const [messageId, { first, to }] of byMessage) {
+        try {
+          const wrapped = await e2ee.rewrapForDevices(
+            device,
+            { conversationId: first.conversationId, senderId: uid, clientId: first.clientId },
+            first.envelope,
+            first.myKey,
+            to,
+          );
+          for (const k of wrapped) keys.push({ message: messageId, ...k });
+        } catch {
+          // Ένα μήνυμα που δεν ανοίγει (π.χ. χαλασμένο) δεν σταματάει τα άλλα.
+        }
+      }
+      if (!keys.length) return 0;
+
+      const { data: added, error: addError } = await db().rpc("add_message_keys", {
+        p_device: device.deviceId,
+        keys,
+      });
+      const count = addError ? 0 : Number(added) || 0;
+      if (count > 0) window.dispatchEvent(new Event("mila:keys-delivered"));
+      return count;
+    } catch {
+      return 0;
+    } finally {
+      lastDelivery = Date.now();
+      delivering = null;
+    }
+  })();
+  return delivering;
+}
+
 // Ποιες συσκευές παίρνουν κλειδί για μια συνομιλία. Λίγα δευτερόλεπτα στη
 // μνήμη· αν άλλαξε κάτι στο μεταξύ (νέο μέλος, νέα συσκευή), ο server το λέει
 // στην αποστολή και ξαναζητάμε.
@@ -552,7 +631,17 @@ async function decryptOne(device: DeviceKeys, m: Msg): Promise<Msg> {
   let out: Msg = m;
   if (m.e2ee && !m.deleted) {
     const plain = await openPlain(device, m.id, m.conversationId, m.senderId, m.e2ee);
-    if (!plain) out = { ...out, body: "", undecryptable: true, attachment: null };
+    if (!plain) {
+      // Κανένα κλειδί για ΚΑΜΙΑ συσκευή μου = δεν είχα συσκευή όταν στάλθηκε·
+      // θα το φέρει ο αποστολέας. Κλειδιά για άλλες συσκευές μου αλλά όχι γι'
+      // αυτήν = στάλθηκε πριν υπάρξει αυτή η συσκευή, και δεν θα έρθει ποτέ.
+      const recent = Date.now() - Date.parse(m.createdAt) < 30 * 86400_000;
+      const pendingKey =
+        m.senderId !== device.userId &&
+        recent &&
+        Object.keys(m.e2ee.keys || {}).length === 0;
+      out = { ...out, body: "", undecryptable: true, pendingKey, attachment: null };
+    }
     else {
       out = { ...out, body: plain.t, undecryptable: false };
       if (plain.f && m.attachment)
@@ -1159,6 +1248,12 @@ export function subscribeToChanges(onChange: () => void): RealtimeChannel {
       "postgres_changes",
       { event: "*", schema: "public", table: "conversation_members" },
       onChange,
+    )
+    // Ήρθε κλειδί για μήνυμα που περίμενα (0012). Το RLS στέλνει μόνο τα δικά μου.
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "message_keys" },
+      onChange,
     );
   channel.subscribe();
   return channel;
@@ -1186,6 +1281,14 @@ export function subscribeToConversation(
     .on(
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "messages", filter },
+      handlers.onRefresh,
+    )
+    // Κλειδί που ήρθε αργότερα για μήνυμα που ήδη βλέπω κλειδωμένο. Το
+    // message_keys δεν έχει conversation_id για φίλτρο· το RLS όμως στέλνει
+    // μόνο τα δικά μου, οπότε είναι λίγα.
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "message_keys" },
       handlers.onRefresh,
     )
     .on(

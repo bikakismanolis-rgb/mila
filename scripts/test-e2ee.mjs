@@ -53,6 +53,19 @@ assert.equal(await e.decryptMessage(B, "conv-1", "alice", { ...e2ee, envelope: t
 // Ο server λέει ότι το έστειλε η Eve (αλλάζει senderKey)
 assert.equal(await e.decryptMessage(B, "conv-1", "alice", { ...e2ee, senderKey: E.publicKey }), null, "swapped sender key detected");
 
+// Παράδοση αργότερα: η Alice έστειλε μόνο για τη δική της συσκευή, ο Bob
+// απέκτησε συσκευή μετά. Η Alice ξανατυλίγει το κλειδί και ο Bob διαβάζει.
+const solo = await e.encryptMessage(A, ctx, { t: "for later" }, [{ deviceId: "dev-a", publicKey: A.publicKey }]);
+const later = await e.rewrapForDevices(A, ctx, solo.envelope, solo.keys[0].key, [{ deviceId: "dev-b", publicKey: B.publicKey }]);
+assert.equal(later.length, 1);
+assert.match(later[0].key, /^[A-Za-z0-9_-]{40,200}$/);
+const soloBox = { v: 1, envelope: solo.envelope, clientId: "client-1", senderKey: A.publicKey, keys: { "dev-b": later[0].key } };
+assert.equal((await e.decryptMessage(B, "conv-1", "alice", soloBox))?.t, "for later", "late delivery decrypts");
+assert.equal(await e.decryptMessage(B, "conv-2", "alice", soloBox), null, "late key is bound to the conversation");
+// Μόνο η συσκευή που το έστειλε μπορεί να το ξανατυλίξει.
+await assert.rejects(e.rewrapForDevices(E, ctx, solo.envelope, solo.keys[0].key, [{ deviceId: "dev-b", publicKey: B.publicKey }]),
+  "another device cannot rewrap");
+
 // Μήκος: στρογγυλεμένο
 const short = await e.encryptMessage(A, ctx, { t: "a" }, [{ deviceId: "dev-b", publicKey: B.publicKey }]);
 const short2 = await e.encryptMessage(A, ctx, { t: "abcdefghij" }, [{ deviceId: "dev-b", publicKey: B.publicKey }]);
