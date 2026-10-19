@@ -1,4 +1,5 @@
-// Edge Function «push»: στέλνει ειδοποιήσεις (Web Push) όταν έρχεται μήνυμα.
+// Edge Function «push»: στέλνει ειδοποιήσεις (Web Push) όταν έρχεται μήνυμα ή
+// κλήση, και δίνει στον browser τους servers για τις κλήσεις (STUN/TURN).
 //
 // ΠΩΣ ΔΕΝΕΙ ΜΕ ΤΑ ΥΠΟΛΟΙΠΑ
 //   1. Ο browser ζητάει από εδώ το ΔΗΜΟΣΙΟ κλειδί ({action:"public-key"}), φτιάχνει
@@ -8,6 +9,10 @@
 //   3. Εδώ ρωτάμε τη βάση «ποιοι πρέπει να ειδοποιηθούν και τι να γράφει»
 //      (push_targets) και στέλνουμε σε κάθε συσκευή. Συνδρομές που έχουν
 //      πεθάνει (404/410) σβήνονται.
+//   4. Για κλήσεις το ίδιο, με {action:"call", call_id, event} από το trigger
+//      του 0013 και push_call_targets.
+//   5. {action:"ice"} από συνδεδεμένο χρήστη: οι servers που βοηθούν δύο
+//      συσκευές να βρεθούν (δες iceServers πιο κάτω).
 //
 // ΧΩΡΙΣ ΧΕΙΡΟΚΙΝΗΤΑ ΜΥΣΤΙΚΑ: τα κλειδιά VAPID φτιάχνονται εδώ την πρώτη φορά και
 // φυλάσσονται στον πίνακα push_config, που τον διαβάζει μόνο το service role.
@@ -251,11 +256,21 @@ export function endpointAllowed(endpoint: string): boolean {
   }
 }
 
+type SendOptions = {
+  /** Πόσα δευτερόλεπτα κρατάει η υπηρεσία push την ειδοποίηση αν η συσκευή
+   *  είναι κλειστή. Ένα «σε καλεί» μετά από ένα λεπτό δεν έχει νόημα. */
+  ttl?: number;
+  /** Ίδιο topic = η νεότερη αντικαθιστά την παλιότερη που δεν παραδόθηκε ακόμα
+   *  (π.χ. το «αναπάντητη» παίρνει τη θέση του «σε καλεί»). */
+  topic?: string;
+};
+
 async function sendOne(
   subscription: Subscription,
   payload: unknown,
   vapid: Vapid,
   subject: string,
+  options: SendOptions = {},
 ): Promise<{ id: string; status: number }> {
   if (!endpointAllowed(subscription.endpoint))
     return { id: subscription.id, status: 410 };
@@ -271,8 +286,9 @@ async function sendOne(
         Authorization: await vapidAuthorization(subscription.endpoint, vapid, subject),
         "Content-Encoding": "aes128gcm",
         "Content-Type": "application/octet-stream",
-        TTL: "86400",
+        TTL: String(options.ttl ?? 86400),
         Urgency: "high",
+        ...(options.topic ? { Topic: options.topic } : {}),
       },
       body: body as BodyInit,
     });
@@ -343,6 +359,134 @@ function sameSecret(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/** Στέλνει σε όλες τις συσκευές και σβήνει όσες συνδρομές έχουν πεθάνει. */
+async function sendAll(
+  targets: { payload: unknown; subscriptions: Subscription[] } | null,
+  config: Config & Vapid,
+  options: SendOptions = {},
+) {
+  if (!targets?.subscriptions?.length) return { sent: 0 };
+  const results = await Promise.all(
+    targets.subscriptions.map((s) =>
+      sendOne(s, targets.payload, config, config.subject, options),
+    ),
+  );
+  const dead = results
+    .filter((r) => r.status === 404 || r.status === 410)
+    .map((r) => r.id);
+  if (dead.length) await rpc("push_prune", { ids: dead });
+  return {
+    sent: results.filter((r) => r.status >= 200 && r.status < 300).length,
+    failed: results.filter((r) => r.status === 0 || r.status >= 400).length,
+    pruned: dead.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Servers για τις κλήσεις (ICE)
+// ---------------------------------------------------------------------------
+// Δύο συσκευές πίσω από router πρέπει πρώτα να μάθουν «πώς φαίνονται απ' έξω»
+// (STUN, δωρεάν). Όταν κάποιο δίκτυο δεν αφήνει απευθείας σύνδεση (συχνό στα
+// δίκτυα κινητής), ο ήχος περνάει από αναμεταδότη (TURN). Ο αναμεταδότης δεν
+// ακούει τίποτα: ό,τι περνάει είναι ήδη κρυπτογραφημένο από άκρη σε άκρη.
+//
+// TURN, ό,τι από τα παρακάτω έχει οριστεί στα secrets της function:
+//   CLOUDFLARE_TURN_KEY_ID + CLOUDFLARE_TURN_API_TOKEN   (Cloudflare Calls)
+//   TURN_URLS + TURN_SECRET      (δικός σου coturn με use-auth-secret)
+//   TURN_URLS + TURN_USERNAME + TURN_CREDENTIAL   (σταθερά στοιχεία, π.χ. metered.ca)
+// Χωρίς κανένα: μόνο STUN. Οι περισσότερες κλήσεις συνδέονται και έτσι.
+
+type IceServer = { urls: string | string[]; username?: string; credential?: string };
+
+const ICE_TTL = 12 * 60 * 60;
+
+function optionalEnv(name: string): string {
+  return ((globalThis as any).Deno?.env.get(name) as string | undefined)?.trim() || "";
+}
+
+/** Οι browsers δεν συνδέονται στη θύρα 53, και η απόπειρα καθυστερεί την κλήση. */
+function withoutPort53(server: IceServer): IceServer {
+  const urls = (Array.isArray(server.urls) ? server.urls : [server.urls]).filter(
+    (u) => !/:53(\?|$)/.test(u),
+  );
+  return { ...server, urls };
+}
+
+async function cloudflareTurn(): Promise<IceServer[]> {
+  const keyId = optionalEnv("CLOUDFLARE_TURN_KEY_ID");
+  const token = optionalEnv("CLOUDFLARE_TURN_API_TOKEN");
+  if (!keyId || !token) return [];
+  const base = `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials`;
+  for (const path of ["generate-ice-servers", "generate"]) {
+    const response = await fetch(`${base}/${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ttl: ICE_TTL }),
+    }).catch(() => null);
+    if (!response) return [];
+    if (response.status === 404) continue;
+    if (!response.ok) {
+      console.error("cloudflare turn failed:", response.status, await response.text());
+      return [];
+    }
+    const data = (await response.json()) as { iceServers?: IceServer | IceServer[] };
+    const list = Array.isArray(data.iceServers) ? data.iceServers : data.iceServers ? [data.iceServers] : [];
+    return list.map(withoutPort53).filter((s) => (s.urls as string[]).length);
+  }
+  return [];
+}
+
+async function coturn(userId: string): Promise<IceServer[]> {
+  const urls = optionalEnv("TURN_URLS").split(",").map((u) => u.trim()).filter(Boolean);
+  if (!urls.length) return [];
+  const secret = optionalEnv("TURN_SECRET");
+  if (secret) {
+    // «TURN REST API»: όνομα = λήξη:χρήστης, κωδικός = HMAC-SHA1(μυστικό, όνομα).
+    const username = `${Math.floor(Date.now() / 1000) + ICE_TTL}:${userId}`;
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret) as BufferSource,
+      { name: "HMAC", hash: "SHA-1" },
+      false,
+      ["sign"],
+    );
+    const mac = new Uint8Array(
+      await crypto.subtle.sign("HMAC", key, encoder.encode(username) as BufferSource),
+    );
+    let raw = "";
+    for (const b of mac) raw += String.fromCharCode(b);
+    return [{ urls, username, credential: btoa(raw) }];
+  }
+  const username = optionalEnv("TURN_USERNAME");
+  const credential = optionalEnv("TURN_CREDENTIAL");
+  return username && credential ? [{ urls, username, credential }] : [];
+}
+
+export async function iceServers(userId: string): Promise<{ iceServers: IceServer[]; ttl: number; relay: boolean }> {
+  const turn = [...(await cloudflareTurn()), ...(await coturn(userId))];
+  return {
+    iceServers: [
+      { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] },
+      ...turn,
+    ],
+    ttl: ICE_TTL,
+    relay: turn.length > 0,
+  };
+}
+
+/** Ο χρήστης πίσω από το token του αιτήματος, ή null. Ρωτάμε το ίδιο το Auth,
+ *  ώστε να μη μετράει ένα token που ανακλήθηκε ή ένα anon key. */
+async function signedInUser(request: Request): Promise<string | null> {
+  const authorization = request.headers.get("Authorization") || "";
+  if (!/^Bearer\s+\S+/.test(authorization)) return null;
+  const response = await fetch(`${env("SUPABASE_URL")}/auth/v1/user`, {
+    headers: { apikey: env("SUPABASE_SERVICE_ROLE_KEY"), Authorization: authorization },
+  }).catch(() => null);
+  if (!response?.ok) return null;
+  const user = (await response.json().catch(() => null)) as { id?: string } | null;
+  return typeof user?.id === "string" ? user.id : null;
+}
+
 // ---------------------------------------------------------------------------
 // HTTP
 // ---------------------------------------------------------------------------
@@ -382,23 +526,32 @@ export async function handler(request: Request): Promise<Response> {
         payload: unknown;
         subscriptions: Subscription[];
       } | null>("push_targets", { message: body.message_id });
-      if (!targets?.subscriptions?.length) return json({ sent: 0 });
+      return json(await sendAll(targets, config));
+    }
 
-      const results = await Promise.all(
-        targets.subscriptions.map((s) =>
-          sendOne(s, targets.payload, config, config.subject),
-        ),
+    if (body?.action === "call" && typeof body.call_id === "string") {
+      const config = await configWithKeys();
+      const given = request.headers.get("x-mila-secret") || "";
+      if (!sameSecret(given, config.webhook_secret))
+        return json({ error: "forbidden" }, 403);
+
+      const event = body.event === "missed" ? "missed" : "ring";
+      const targets = await rpc<{
+        payload: unknown;
+        subscriptions: Subscription[];
+      } | null>("push_call_targets", { p_call: body.call_id, p_event: event });
+      return json(
+        await sendAll(targets, config, {
+          ttl: event === "ring" ? 45 : 86400,
+          topic: body.call_id.replace(/[^A-Za-z0-9]/g, "").slice(0, 32),
+        }),
       );
-      const dead = results
-        .filter((r) => r.status === 404 || r.status === 410)
-        .map((r) => r.id);
-      if (dead.length) await rpc("push_prune", { ids: dead });
+    }
 
-      return json({
-        sent: results.filter((r) => r.status >= 200 && r.status < 300).length,
-        failed: results.filter((r) => r.status === 0 || r.status >= 400).length,
-        pruned: dead.length,
-      });
+    if (body?.action === "ice") {
+      const userId = await signedInUser(request);
+      if (!userId) return json({ error: "sign in first" }, 401);
+      return json(await iceServers(userId));
     }
 
     return json({ error: "unknown action" }, 400);

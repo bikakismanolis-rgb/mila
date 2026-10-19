@@ -11,7 +11,7 @@
  * κάτω μέρος του αρχείου.
  */
 
-const VERSION = "mila-v3";
+const VERSION = "mila-v4";
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -94,8 +94,61 @@ self.addEventListener("fetch", (event) => {
 // του είναι εδώ, με την ίδια λογική επιλογής γλώσσας.
 const GREEK = (self.navigator.language || "").toLowerCase().startsWith("el");
 const TEXT = GREEK
-  ? { fallback: "Νέο μήνυμα", request: "Νέο αίτημα συνομιλίας", file: "Συνημμένο" }
-  : { fallback: "New message", request: "New message request", file: "Attachment" };
+  ? {
+      fallback: "Νέο μήνυμα",
+      request: "Νέο αίτημα συνομιλίας",
+      file: "Συνημμένο",
+      voiceCall: "Εισερχόμενη κλήση",
+      videoCall: "Εισερχόμενη βιντεοκλήση",
+      missedVoice: "Αναπάντητη κλήση",
+      missedVideo: "Αναπάντητη βιντεοκλήση",
+      answer: "Απάντηση",
+      decline: "Απόρριψη",
+    }
+  : {
+      fallback: "New message",
+      request: "New message request",
+      file: "Attachment",
+      voiceCall: "Incoming call",
+      videoCall: "Incoming video call",
+      missedVoice: "Missed call",
+      missedVideo: "Missed video call",
+      answer: "Answer",
+      decline: "Decline",
+    };
+
+/** Εισερχόμενη / αναπάντητη κλήση. Ίδιο tag ανά κλήση, ώστε το «αναπάντητη»
+ *  να αντικαθιστά το «σε καλεί» στην οθόνη. */
+async function showCall(data) {
+  const ring = data.event === "ring";
+  const text = ring
+    ? data.video ? TEXT.videoCall : TEXT.voiceCall
+    : data.video ? TEXT.missedVideo : TEXT.missedVoice;
+  const body = data.isGroup && data.callerName ? `${data.callerName}: ${text}` : text;
+  const options = {
+    body,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    tag: `call:${data.callId}`,
+    renotify: true,
+    data: {
+      kind: "call",
+      callId: data.callId,
+      conversationId: data.conversationId || null,
+      ring,
+    },
+  };
+  if (ring) {
+    // Μένει στην οθόνη μέχρι να την πατήσεις, και δονείται σαν τηλέφωνο.
+    options.requireInteraction = true;
+    options.vibrate = [600, 300, 600, 300, 600, 300, 600, 300, 600];
+    options.actions = [
+      { action: "decline", title: TEXT.decline },
+      { action: "answer", title: TEXT.answer },
+    ];
+  }
+  await self.registration.showNotification(data.title || "Mila", options);
+}
 
 self.addEventListener("push", (event) => {
   let data = {};
@@ -111,9 +164,14 @@ self.addEventListener("push", (event) => {
         type: "window",
         includeUncontrolled: true,
       });
-      // Το app είναι ανοιχτό και μπροστά: το μήνυμα φαίνεται ήδη στην οθόνη,
-      // η ειδοποίηση θα ήταν θόρυβος.
+      // Το app είναι ανοιχτό και μπροστά: το μήνυμα (ή η κλήση) φαίνεται ήδη
+      // στην οθόνη, η ειδοποίηση θα ήταν θόρυβος.
       if (windows.some((w) => w.visibilityState === "visible" && w.focused)) return;
+
+      if (data.type === "call" && data.callId) {
+        await showCall(data);
+        return;
+      }
 
       const text =
         data.body ||
@@ -136,7 +194,33 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const id = event.notification.data && event.notification.data.conversationId;
+  const info = event.notification.data || {};
+
+  // Κλήση: «Απάντηση» ανοίγει το app και σηκώνει. «Απόρριψη» λέει σε ένα
+  // ανοιχτό παράθυρο να την απορρίψει, αλλιώς ανοίγει το app για να το κάνει
+  // (ο service worker δεν έχει τη σύνδεση του χρήστη για να το κάνει μόνος).
+  if (info.kind === "call" && info.callId) {
+    const action =
+      event.action === "decline" || event.action === "answer" ? event.action : "show";
+    event.waitUntil(
+      (async () => {
+        const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        for (const w of windows) {
+          if ("focus" in w) {
+            if (action !== "decline") await w.focus();
+            w.postMessage({ type: "call-action", action, callId: info.callId, conversationId: info.conversationId });
+            return;
+          }
+        }
+        await self.clients.openWindow(
+          `/?call=${encodeURIComponent(info.callId)}&action=${action}`,
+        );
+      })(),
+    );
+    return;
+  }
+
+  const id = info.conversationId;
 
   event.waitUntil(
     (async () => {

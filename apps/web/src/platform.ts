@@ -18,6 +18,12 @@ export const isTauri = typeof window.__TAURI_INTERNALS__ !== "undefined";
 
 export const nativePlatform = window.Capacitor?.getPlatform?.() ?? "web";
 
+/** Κινητό ή tablet (αφή, πληκτρολόγιο οθόνης). Αλλάζει μικρά πράγματα, π.χ.
+ *  το Enter αλλάζει γραμμή αντί να στέλνει. */
+export const isMobile =
+  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+  (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
 /** Εγκατεστημένο PWA (προστέθηκε στην αρχική οθόνη), όχι απλό tab. */
 export const isStandalone =
   window.matchMedia("(display-mode: standalone)").matches ||

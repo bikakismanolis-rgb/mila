@@ -50,8 +50,23 @@ export type Recipient = { deviceId: string; publicKey: string };
 export type MessagePlain = {
   /** Κείμενο. */
   t: string;
-  /** Συνημμένο: όνομα, τύπος, μέγεθος, κλειδί και iv του αρχείου. */
-  f?: { n: string; m: string; s: number; k: string; i: string };
+  /** Συνημμένο: όνομα, τύπος, μέγεθος, κλειδί και iv του αρχείου. Προαιρετικά:
+   *  d = διάρκεια σε δευτερόλεπτα (ήχος, βίντεο), w = κυματομορφή (0-31 ανά
+   *  στήλη), v = φωνητικό μήνυμα, p = μικρογραφία (data: URL), wh = διαστάσεις. */
+  f?: {
+    n: string;
+    m: string;
+    s: number;
+    k: string;
+    i: string;
+    d?: number;
+    w?: number[];
+    v?: 1;
+    p?: string;
+    wh?: [number, number];
+  };
+  /** Προωθημένο μήνυμα. Το ξέρουν μόνο οι συσκευές, όχι ο server. */
+  fw?: 1;
 };
 
 export type E2ee = {
@@ -276,8 +291,15 @@ async function importPublic(publicKey: string): Promise<CryptoKey> {
   );
 }
 
-function pairKey(me: DeviceKeys, theirPublicKey: string): Promise<CryptoKey> {
-  const id = `${me.publicKey}|${theirPublicKey}`;
+// Το ίδιο μυστικό ECDH δίνει, με διαφορετικό «salt», ανεξάρτητα κλειδιά για
+// διαφορετικές δουλειές: «pair» για τα μηνύματα, «call» για τη χειραψία των
+// κλήσεων. Έτσι ένα κλειδί δεν χρησιμοποιείται ποτέ για δύο πράγματα.
+function derivedKey(
+  me: DeviceKeys,
+  theirPublicKey: string,
+  purpose: "pair" | "call",
+): Promise<CryptoKey> {
+  const id = `${purpose}|${me.publicKey}|${theirPublicKey}`;
   let pending = pairKeys.get(id);
   if (!pending) {
     pending = (async () => {
@@ -295,7 +317,7 @@ function pairKey(me: DeviceKeys, theirPublicKey: string): Promise<CryptoKey> {
         {
           name: "HKDF",
           hash: "SHA-256",
-          salt: encoder.encode("mila/v1/pair"),
+          salt: encoder.encode(`mila/v1/${purpose}`),
           info: encoder.encode(`${a}|${b}`),
         },
         base,
@@ -310,6 +332,9 @@ function pairKey(me: DeviceKeys, theirPublicKey: string): Promise<CryptoKey> {
   }
   return pending;
 }
+
+const pairKey = (me: DeviceKeys, theirPublicKey: string) =>
+  derivedKey(me, theirPublicKey, "pair");
 
 // ---------------------------------------------------------------------------
 // Μηνύματα
@@ -496,6 +521,56 @@ export async function rewrapForDevices(
   }
   raw.fill(0);
   return keys;
+}
+
+// ---------------------------------------------------------------------------
+// Κλήσεις: η «χειραψία» από συσκευή σε συσκευή
+// ---------------------------------------------------------------------------
+// Πριν μιλήσουν, δύο συσκευές ανταλλάσσουν περιγραφές (SDP) που περιέχουν το
+// αποτύπωμα του κλειδιού με το οποίο θα κρυπτογραφηθεί ο ήχος και η εικόνα
+// (DTLS-SRTP). Αν ο server μπορούσε να αλλάξει αυτό το αποτύπωμα, θα μπορούσε
+// να μπει στη μέση. Γι' αυτό κάθε τέτοιο μήνυμα σφραγίζεται με κλειδί που
+// βγαίνει από τα κλειδιά των ΔΥΟ συσκευών: μόνο η άλλη συσκευή το ανοίγει, και
+// μόνο αυτή μπορεί να το έχει φτιάξει. Το aad δένει το μήνυμα με την κλήση, τον
+// αποστολέα, τον παραλήπτη και τη σειρά του (δεν ξαναπαίζεται, δεν μεταφέρεται).
+
+export async function sealSignal(
+  me: DeviceKeys,
+  theirPublicKey: string,
+  aad: string,
+  data: unknown,
+): Promise<string> {
+  const key = await derivedKey(me, theirPublicKey, "call");
+  const iv = random(12);
+  const ct = new Uint8Array(
+    await subtle.encrypt(
+      { name: "AES-GCM", iv, additionalData: encoder.encode(aad) },
+      key,
+      encoder.encode(JSON.stringify(data)),
+    ),
+  );
+  return toB64(concat(iv, ct));
+}
+
+/** null = δεν ανοίγει (άλλος αποστολέας, πειραγμένο, ή όχι για εμένα). */
+export async function openSignal<T = unknown>(
+  me: DeviceKeys,
+  theirPublicKey: string,
+  aad: string,
+  sealed: string,
+): Promise<T | null> {
+  try {
+    const key = await derivedKey(me, theirPublicKey, "call");
+    const bytes = fromB64(sealed);
+    const plain = await subtle.decrypt(
+      { name: "AES-GCM", iv: bytes.slice(0, 12), additionalData: encoder.encode(aad) },
+      key,
+      bytes.slice(12),
+    );
+    return JSON.parse(decoder.decode(plain)) as T;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

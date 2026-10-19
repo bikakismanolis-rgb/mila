@@ -66,3 +66,13 @@ export function fileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/** «τελευταία φορά σήμερα στις 14:02», «χθες στις…», «στις 3/10 στις…». */
+export function lastSeenText(iso: string): string {
+  const date = new Date(iso);
+  const ago = daysAgo(date);
+  const at = timeFormat.format(date);
+  if (ago <= 0) return t("presence.lastSeenToday", { time: at });
+  if (ago === 1) return t("presence.lastSeenYesterday", { time: at });
+  return t("presence.lastSeenDate", { date: shortDate.format(date), time: at });
+}

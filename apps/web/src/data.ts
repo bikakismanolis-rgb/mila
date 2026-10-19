@@ -34,7 +34,11 @@ export type User = {
   deleted?: boolean;
   /** Μόνο για τον εαυτό μου· για τους άλλους ο server δεν τις στέλνει. */
   privacy: Privacy | null;
+  /** «Σε σύνδεση» / «τελευταία φορά». null όταν δεν δικαιούμαι να το δω. */
+  presence?: Presence | null;
 };
+
+export type Presence = { online: boolean; lastSeen: string | null };
 
 export type Member = User & { role?: "member" | "admin" };
 
@@ -49,7 +53,17 @@ export type Attachment = {
   /** Κλειδί και iv του αρχείου, από το κρυπτογραφημένο μήνυμα. */
   key?: string;
   iv?: string;
-}
+  /** Διάρκεια σε δευτερόλεπτα (ήχος, βίντεο). */
+  duration?: number;
+  /** Κυματομορφή φωνητικού: ύψος κάθε στήλης, 0-31. */
+  waveform?: number[];
+  /** Φωνητικό μήνυμα (όχι απλό αρχείο ήχου). */
+  voice?: boolean;
+  /** Μικρογραφία (data: URL), για βίντεο. */
+  poster?: string;
+  width?: number;
+  height?: number;
+};
 
 export type Reaction = { userId: string; emoji: string };
 
@@ -83,6 +97,10 @@ export type Msg = {
   waiting?: boolean;
   kind?: string;
   createdAt: string;
+  /** Πότε το άλλαξε ο αποστολέας, αν το άλλαξε. */
+  editedAt?: string | null;
+  /** Προωθημένο (το ξέρουν μόνο οι συσκευές). */
+  forwarded?: boolean;
   readBy: string[];
   deliveredTo: string[];
   reactions?: Reaction[];
@@ -102,6 +120,32 @@ export type Chat = {
   requestStatus?: "pending" | "accepted" | "rejected";
   blockedByMe?: boolean;
   createdAt: string;
+  /** Μόνο για μένα: σίγαση, αρχείο, καρφίτσωμα. */
+  mutedUntil?: string | null;
+  archived?: boolean;
+  pinnedAt?: string | null;
+  lastCall?: Call | null;
+};
+
+export type CallParticipant = {
+  userId: string;
+  state: "ringing" | "joined" | "declined" | "missed" | "left";
+  deviceId: string | null;
+  joinedAt: string | null;
+  leftAt: string | null;
+};
+
+export type Call = {
+  id: string;
+  conversationId: string;
+  callerId: string;
+  video: boolean;
+  status: "ringing" | "active" | "ended";
+  endReason: "completed" | "missed" | "declined" | "busy" | "failed" | null;
+  createdAt: string;
+  answeredAt: string | null;
+  endedAt: string | null;
+  participants: CallParticipant[];
 };
 
 export type NewAttachment = {
@@ -114,6 +158,17 @@ export type NewAttachment = {
   uploadSize: number;
   key: string;
   iv: string;
+} & MediaInfo;
+
+/** Ό,τι ξέρουμε για ένα αρχείο πέρα από όνομα και τύπο. Ταξιδεύει μέσα στο
+ *  κρυπτογραφημένο μήνυμα· ο server δεν το βλέπει. */
+export type MediaInfo = {
+  duration?: number;
+  waveform?: number[];
+  voice?: boolean;
+  poster?: string;
+  width?: number;
+  height?: number;
 };
 
 export type Device = {
@@ -232,6 +287,7 @@ function fromPayload<T extends Partial<User>>(raw: T): T & User {
     avatarPath: raw.avatarPath ?? null,
     avatar: "",
     privacy: raw.privacy ?? null,
+    presence: raw.presence ?? null,
   } as T & User;
 }
 
@@ -585,23 +641,37 @@ export function deliverPendingKeys(): Promise<number> {
 // Ποιες συσκευές παίρνουν κλειδί για μια συνομιλία. Λίγα δευτερόλεπτα στη
 // μνήμη· αν άλλαξε κάτι στο μεταξύ (νέο μέλος, νέα συσκευή), ο server το λέει
 // στην αποστολή και ξαναζητάμε.
-const deviceKeyCache = new Map<string, { at: number; list: Recipient[] }>();
+export type MemberDevice = Recipient & { userId: string };
 
-async function recipientsFor(
+const deviceKeyCache = new Map<string, { at: number; list: MemberDevice[] }>();
+
+/** Οι ενεργές συσκευές όλων των μελών, με το δημόσιο κλειδί τους. Από εδώ οι
+ *  κλήσεις ελέγχουν ότι μια συσκευή ανήκει πράγματι σε μέλος της συνομιλίας. */
+export async function conversationDevices(
   conversationId: string,
   fresh = false,
-): Promise<Recipient[]> {
+): Promise<MemberDevice[]> {
   const cached = deviceKeyCache.get(conversationId);
   if (!fresh && cached && Date.now() - cached.at < 60_000) return cached.list;
   const { data, error } = await db().rpc("conversation_device_keys", {
     conversation: conversationId,
   });
   if (error) fail("err.send", error);
-  const list = ((data || []) as { deviceId: string; publicKey: string }[]).map(
-    (d) => ({ deviceId: d.deviceId, publicKey: d.publicKey }),
-  );
+  const list = (
+    (data || []) as { userId: string; deviceId: string; publicKey: string }[]
+  ).map((d) => ({ userId: d.userId, deviceId: d.deviceId, publicKey: d.publicKey }));
   deviceKeyCache.set(conversationId, { at: Date.now(), list });
   return list;
+}
+
+async function recipientsFor(
+  conversationId: string,
+  fresh = false,
+): Promise<Recipient[]> {
+  return (await conversationDevices(conversationId, fresh)).map((d) => ({
+    deviceId: d.deviceId,
+    publicKey: d.publicKey,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -613,6 +683,9 @@ async function recipientsFor(
 
 const plainCache = new Map<string, MessagePlain | null>();
 const knownMessages = new Map<string, Msg>();
+/** Το τελευταίο περιεχόμενο κάθε μηνύματος, για την επεξεργασία και την
+ *  προώθηση (θέλουν το αρχικό συνημμένο όπως ήταν μέσα στο μήνυμα). */
+const latestPlain = new Map<string, MessagePlain>();
 
 async function openPlain(
   device: DeviceKeys,
@@ -621,9 +694,14 @@ async function openPlain(
   senderId: string,
   box: E2ee,
 ): Promise<MessagePlain | null> {
-  if (plainCache.has(id) && plainCache.get(id)) return plainCache.get(id)!;
+  // Το κλειδί περιλαμβάνει το τέλος του ciphertext (το tag του GCM, μοναδικό
+  // σε κάθε κρυπτογράφηση): ένα μήνυμα που άλλαξε ξαναανοίγει.
+  const cacheKey = `${id}|${box.envelope.length}|${box.envelope.slice(-32)}`;
+  const cached = plainCache.get(cacheKey);
+  if (cached) return cached;
   const plain = await e2ee.decryptMessage(device, conversationId, senderId, box);
-  plainCache.set(id, plain);
+  plainCache.set(cacheKey, plain);
+  if (plain) latestPlain.set(id, plain);
   return plain;
 }
 
@@ -643,7 +721,7 @@ async function decryptOne(device: DeviceKeys, m: Msg): Promise<Msg> {
       out = { ...out, body: "", undecryptable: true, pendingKey, attachment: null };
     }
     else {
-      out = { ...out, body: plain.t, undecryptable: false };
+      out = { ...out, body: plain.t, undecryptable: false, forwarded: plain.fw === 1 };
       if (plain.f && m.attachment)
         out.attachment = {
           ...m.attachment,
@@ -652,6 +730,15 @@ async function decryptOne(device: DeviceKeys, m: Msg): Promise<Msg> {
           size: plain.f.s,
           key: plain.f.k,
           iv: plain.f.i,
+          duration: typeof plain.f.d === "number" ? plain.f.d : undefined,
+          waveform: Array.isArray(plain.f.w) ? plain.f.w.slice(0, 64) : undefined,
+          voice: plain.f.v === 1,
+          poster:
+            typeof plain.f.p === "string" && plain.f.p.startsWith("data:image/")
+              ? plain.f.p
+              : undefined,
+          width: plain.f.wh?.[0],
+          height: plain.f.wh?.[1],
         };
     }
   }
@@ -701,7 +788,9 @@ export async function exportMyData(): Promise<unknown> {
       }),
     );
   }
-  return payload;
+  // Το ιστορικό κλήσεων (ποιος, πότε, πόσο) είναι κι αυτό δικά σου δεδομένα.
+  const calls = await listCalls().catch(() => []);
+  return { ...payload, calls };
 }
 
 export async function countMyUnencryptedMessages(): Promise<number> {
@@ -837,6 +926,14 @@ async function withMedia(messages: Msg[]): Promise<Msg[]> {
   );
 }
 
+/** Διεύθυνση για <audio>/<video>/<img>: αποκρυπτογραφημένο blob: URL, ή το
+ *  signed URL των παλιών, μη κρυπτογραφημένων συνημμένων. */
+export async function mediaUrl(attachment: Attachment): Promise<string> {
+  if (attachment.key) return decryptedUrl(attachment);
+  if (attachment.url) return attachment.url;
+  throw new Error(t("err.download"));
+}
+
 /** Ανοίγει / κατεβάζει ένα συνημμένο που δεν φαίνεται ήδη στην οθόνη. */
 export async function openAttachment(attachment: Attachment): Promise<void> {
   const url = attachment.key ? await decryptedUrl(attachment) : attachment.url;
@@ -860,6 +957,7 @@ export async function openAttachment(attachment: Attachment): Promise<void> {
 export async function uploadAttachment(
   file: File,
   conversationId: string,
+  info: MediaInfo = {},
 ): Promise<NewAttachment> {
   if (file.size > MAX_UPLOAD) throw new Error(t("err.fileTooLarge"));
 
@@ -883,6 +981,7 @@ export async function uploadAttachment(
     );
 
   return {
+    ...info,
     path,
     name: file.name.slice(0, 180),
     mime: file.type || "application/octet-stream",
@@ -891,6 +990,24 @@ export async function uploadAttachment(
     key: sealed.key,
     iv: sealed.iv,
   };
+}
+
+/** Το περιεχόμενο του συνημμένου όπως μπαίνει μέσα στο κρυπτογραφημένο μήνυμα. */
+function plainFile(file: NewAttachment): NonNullable<MessagePlain["f"]> {
+  const f: NonNullable<MessagePlain["f"]> = {
+    n: file.name,
+    m: file.mime,
+    s: file.size,
+    k: file.key,
+    i: file.iv,
+  };
+  if (typeof file.duration === "number" && Number.isFinite(file.duration))
+    f.d = Math.round(file.duration * 10) / 10;
+  if (file.waveform?.length) f.w = file.waveform.slice(0, 64).map((x) => Math.max(0, Math.min(31, Math.round(x))));
+  if (file.voice) f.v = 1;
+  if (file.poster) f.p = file.poster;
+  if (file.width && file.height) f.wh = [Math.round(file.width), Math.round(file.height)];
+  return f;
 }
 
 /** Σβήνει αρχεία από το storage. Best-effort: αν αποτύχει, μένει ορφανό αρχείο
@@ -921,11 +1038,43 @@ export async function listChats(): Promise<Chat[]> {
   ).catch(() => null);
   const lastById = new Map((lasts || []).map((m) => [m.id, m]));
 
+  // Ό,τι μου ήρθε έφτασε: δύο γκρι τικ για τον αποστολέα.
+  markDelivered();
+
   return raw.map((c) => ({
     ...c,
     others: c.others.map((u) => ({ ...(byId.get(u.id) || fromPayload(u)), role: u.role })),
     last: c.last ? lastById.get(c.last.id) || { ...c.last, undecryptable: Boolean(c.last.e2ee) } : c.last,
   }));
+}
+
+let delivering0: Promise<void> | null = null;
+let lastDelivered = 0;
+let deliverLater: number | undefined;
+
+/** «Παραδόθηκε». Το πολύ μία κλήση στα 3 δευτερόλεπτα: η λίστα ανανεώνεται σε
+ *  κάθε γεγονός, και μία κλήση καλύπτει όλα τα μηνύματα. Ό,τι ζητηθεί στο
+ *  μεταξύ δεν χάνεται: γίνεται μία φορά ακόμα, μόλις περάσει το διάστημα. */
+function markDelivered(): void {
+  const wait = 3000 - (Date.now() - lastDelivered);
+  if (delivering0 || wait > 0) {
+    if (deliverLater === undefined)
+      deliverLater = window.setTimeout(() => {
+        deliverLater = undefined;
+        markDelivered();
+      }, Math.max(wait, 400));
+    return;
+  }
+  delivering0 = (async () => {
+    try {
+      await db().rpc("mark_delivered");
+    } catch {
+      // Το «παραδόθηκε» είναι πληροφορία, όχι λειτουργία· δεν αξίζει σφάλμα.
+    } finally {
+      lastDelivered = Date.now();
+      delivering0 = null;
+    }
+  })();
 }
 
 /**
@@ -968,15 +1117,15 @@ export async function startChat(userId: string): Promise<string> {
 export async function sendMessage(
   conversationId: string,
   body: string,
-  options: { replyTo?: string; attachment?: NewAttachment } = {},
+  options: { replyTo?: string; attachment?: NewAttachment; forwarded?: boolean } = {},
 ): Promise<void> {
   const uid = await sessionUserId();
   const device = await ensureDevice();
   const clientId = crypto.randomUUID();
   const file = options.attachment;
   const plain: MessagePlain = { t: body };
-  if (file)
-    plain.f = { n: file.name, m: file.mime, s: file.size, k: file.key, i: file.iv };
+  if (file) plain.f = plainFile(file);
+  if (options.forwarded) plain.fw = 1;
 
   // Δύο προσπάθειες: αν στο μεταξύ μπήκε νέο μέλος ή νέα συσκευή, ο server
   // απαντάει «out of date» και ξανακρυπτογραφούμε με φρέσκια λίστα κλειδιών.
@@ -1030,6 +1179,109 @@ export async function deleteMessage(
     Boolean,
   );
   await removeFiles(paths);
+}
+
+/** Αλλάζει το κείμενο ενός δικού μου μηνύματος (μέσα σε 15 λεπτά). Το νέο
+ *  κείμενο κρυπτογραφείται ξανά για όλες τις συσκευές· το συνημμένο μένει. */
+export async function editMessage(message: Msg, text: string): Promise<void> {
+  const uid = await sessionUserId();
+  const device = await ensureDevice();
+  const clientId = message.e2ee?.clientId;
+  const before = latestPlain.get(message.id);
+  if (!clientId || !before || message.senderId !== uid) fail("err.edit", null);
+  const plain: MessagePlain = { ...before, t: text };
+
+  let lastError: { message?: string } | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const recipients = await recipientsFor(message.conversationId, attempt > 0);
+    const sealed = await e2ee.encryptMessage(
+      device,
+      { conversationId: message.conversationId, senderId: uid, clientId },
+      plain,
+      recipients,
+    );
+    const { error } = await db().rpc("edit_message", {
+      message: message.id,
+      body: sealed.envelope,
+      sender_device: device.deviceId,
+      keys: sealed.keys,
+    });
+    if (!error) return;
+    lastError = error;
+    if (!/out of date/i.test(error.message)) break;
+  }
+  if (/unknown sending device/i.test(lastError?.message || "")) deviceFor = null;
+  fail("err.edit", lastError);
+}
+
+/**
+ * Προώθηση σε άλλες συνομιλίες. Το αρχείο δεν ξανακρυπτογραφείται: το ίδιο
+ * κρυπτογραφημένο περιεχόμενο ανεβαίνει σε νέα θέση, και το κλειδί του πάει
+ * μέσα στο νέο κρυπτογραφημένο μήνυμα, όπως και στο αρχικό.
+ */
+export async function forwardMessage(
+  message: Msg,
+  conversationIds: string[],
+): Promise<void> {
+  const uid = await sessionUserId();
+  const source = message.attachment;
+  let sealedBlob: Blob | null = null;
+  if (source?.key) {
+    const { data, error } = await db().storage.from(BUCKET).download(source.path);
+    if (error || !data) throw new Error(t("err.download"));
+    sealedBlob = data;
+  }
+  for (const target of conversationIds) {
+    let attachment: NewAttachment | undefined;
+    if (source && sealedBlob) {
+      const path = `${uid}/${target}/${crypto.randomUUID()}`;
+      const { error } = await db()
+        .storage.from(BUCKET)
+        .upload(path, sealedBlob, { contentType: "application/octet-stream", upsert: false });
+      if (error)
+        throw new Error(
+          /row-level security/i.test(error.message)
+            ? t("err.limitUploads")
+            : translateError(error.message) || t("err.upload"),
+        );
+      attachment = {
+        path,
+        name: source.name,
+        mime: source.mime,
+        size: source.size,
+        uploadSize: sealedBlob.size,
+        key: source.key!,
+        iv: source.iv!,
+        duration: source.duration,
+        waveform: source.waveform,
+        voice: source.voice,
+        poster: source.poster,
+        width: source.width,
+        height: source.height,
+      };
+    } else if (source?.url) {
+      // Παλιό, μη κρυπτογραφημένο συνημμένο: το κατεβάζουμε και το στέλνουμε
+      // κανονικά, κρυπτογραφημένο αυτή τη φορά.
+      const blob = await fetch(source.url).then((r) => r.blob());
+      attachment = await uploadAttachment(
+        new File([blob], source.name, { type: source.mime }),
+        target,
+      );
+    }
+    await sendMessage(target, message.body, { attachment, forwarded: true });
+  }
+}
+
+/** Σίγαση (μέχρι πότε, ή null), αρχείο, καρφίτσωμα. Μόνο για μένα. */
+export async function setChatPrefs(
+  conversationId: string,
+  prefs: { mutedUntil?: string | null; archived?: boolean; pinned?: boolean },
+): Promise<void> {
+  const { error } = await db().rpc("set_conversation_prefs", {
+    conversation: conversationId,
+    prefs,
+  });
+  if (error) fail("err.generic", error);
 }
 
 /** Ίδιο emoji δεύτερη φορά = αφαίρεση. Το χειρίζεται η βάση. */
@@ -1221,6 +1473,116 @@ export async function pushPublicKey(): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Κλήσεις
+// ---------------------------------------------------------------------------
+// Η βάση κρατάει μόνο ποιος κάλεσε ποιον και πότε (0013). Η ίδια η σύνδεση
+// είναι στο calls.ts.
+
+async function callRpc(fn: string, args: Record<string, unknown>): Promise<Call> {
+  const { data, error } = await db().rpc(fn, args);
+  if (error || !data) fail("err.call", error);
+  return data as Call;
+}
+
+export async function startCall(conversationId: string, video: boolean): Promise<Call> {
+  const device = await ensureDevice();
+  return callRpc("start_call", {
+    p_conversation: conversationId,
+    p_video: video,
+    p_device: device.deviceId,
+  });
+}
+
+export async function joinCall(callId: string): Promise<Call> {
+  const device = await ensureDevice();
+  return callRpc("join_call", { p_call: callId, p_device: device.deviceId });
+}
+
+export const declineCall = (callId: string) => callRpc("decline_call", { p_call: callId });
+export const leaveCall = (callId: string) => callRpc("leave_call", { p_call: callId });
+export const callHeartbeat = (callId: string) => callRpc("call_heartbeat", { p_call: callId });
+
+export async function getCall(callId: string): Promise<Call | null> {
+  const { data, error } = await db().rpc("get_call", { p_call: callId });
+  if (error) return null;
+  return (data as Call | null) || null;
+}
+
+/** Ιστορικό κλήσεων: όλο, ή μιας συνομιλίας από κάποια στιγμή και μετά. */
+export async function listCalls(conversationId?: string, since?: string): Promise<Call[]> {
+  const { data, error } = await db().rpc("list_calls", {
+    p_conversation: conversationId ?? null,
+    p_since: since ?? null,
+    p_limit: conversationId ? 300 : 150,
+  });
+  if (error) fail("err.loadCalls", error);
+  return (data || []) as Call[];
+}
+
+let iceCache: { until: number; servers: RTCIceServer[]; relay: boolean } | null = null;
+
+/** Οι servers που βοηθούν δύο συσκευές να βρεθούν (STUN και, αν έχει
+ *  ρυθμιστεί, TURN). Αν η function δεν απαντά, φτάνουν οι δημόσιοι STUN. */
+export async function iceServers(): Promise<{ servers: RTCIceServer[]; relay: boolean }> {
+  if (iceCache && iceCache.until > Date.now()) return iceCache;
+  try {
+    const { data, error } = await db().functions.invoke("push", {
+      body: { action: "ice" },
+    });
+    const result = data as { iceServers?: RTCIceServer[]; ttl?: number; relay?: boolean } | null;
+    if (error || !result?.iceServers?.length) throw error || new Error("no ice servers");
+    iceCache = {
+      servers: result.iceServers,
+      relay: Boolean(result.relay),
+      until: Date.now() + Math.max(60, (result.ttl || 3600) - 300) * 1000,
+    };
+    return iceCache;
+  } catch {
+    return {
+      servers: [{ urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"] }],
+      relay: false,
+    };
+  }
+}
+
+/** Νέα κλήση ή αλλαγή σε κλήση (απάντησε κάποιος, έκλεισε) σε συνομιλία μου.
+ *  Το RLS φέρνει μόνο ό,τι αφορά τις δικές μου συνομιλίες. */
+export function subscribeToCalls(onChange: (callId: string) => void): RealtimeChannel {
+  const pick = (key: string) => (payload: { new?: unknown }) => {
+    const row = payload.new as Record<string, unknown> | undefined;
+    if (typeof row?.[key] === "string") onChange(row[key] as string);
+  };
+  const channel = db()
+    .channel("mila-calls")
+    .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, pick("id"))
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "call_participants" },
+      pick("call_id"),
+    );
+  channel.subscribe();
+  return channel;
+}
+
+// ---------------------------------------------------------------------------
+// «Σε σύνδεση»
+// ---------------------------------------------------------------------------
+
+export async function touchPresence(online: boolean): Promise<void> {
+  try {
+    await db().rpc("touch_presence", { online });
+  } catch {
+    // Δεν είναι λόγος να ενοχληθεί ο χρήστης.
+  }
+}
+
+export async function getPresence(userId: string): Promise<Presence | null> {
+  const { data, error } = await db().rpc("get_presence", { target: userId });
+  if (error) return null;
+  return (data as Presence | null) || null;
+}
+
+// ---------------------------------------------------------------------------
 // Realtime
 // ---------------------------------------------------------------------------
 
@@ -1254,7 +1616,9 @@ export function subscribeToChanges(onChange: () => void): RealtimeChannel {
       "postgres_changes",
       { event: "INSERT", schema: "public", table: "message_keys" },
       onChange,
-    );
+    )
+    // Κλήσεις: η λίστα δείχνει την τελευταία («Αναπάντητη κλήση»).
+    .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, onChange);
   channel.subscribe();
   return channel;
 }
@@ -1324,18 +1688,24 @@ export function subscribeToConversation(
   return channel;
 }
 
-// Το "γράφει..." είναι εφήμερο και δεν αποθηκεύεται πουθενά, οπότε πάει από
-// Broadcast αντί για τη βάση.
+export type Activity = "typing" | "recording";
+
+// Το "γράφει..." (και το «ηχογραφεί...») είναι εφήμερο και δεν αποθηκεύεται
+// πουθενά, οπότε πάει από Broadcast αντί για τη βάση.
 export function subscribeToTyping(
   conversationId: string,
-  onTyping: (active: boolean, userId: string) => void,
+  onTyping: (active: boolean, userId: string, activity: Activity) => void,
 ): RealtimeChannel {
   const channel = db()
     .channel(`typing:${conversationId}`, {
       config: { broadcast: { self: false } },
     })
     .on("broadcast", { event: "typing" }, ({ payload }) => {
-      onTyping(Boolean(payload?.active), String(payload?.userId || ""));
+      onTyping(
+        Boolean(payload?.active),
+        String(payload?.userId || ""),
+        payload?.activity === "recording" ? "recording" : "typing",
+      );
     });
   channel.subscribe();
   return channel;
@@ -1348,6 +1718,7 @@ export function sendTyping(
   channel: RealtimeChannel | null,
   active: boolean,
   userId: string,
+  activity: Activity = "typing",
 ): void {
   if (!channel) return;
   try {
@@ -1355,7 +1726,7 @@ export function sendTyping(
       channel.send({
         type: "broadcast",
         event: "typing",
-        payload: { active, userId },
+        payload: { active, userId, activity },
       }),
     ).catch(() => undefined);
   } catch {

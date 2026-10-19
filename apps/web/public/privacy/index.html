@@ -86,11 +86,14 @@
 
       <div class="callout">
         <p>
-          <b>Your messages are end-to-end encrypted.</b> Text, photos and files
-          are locked on your device, with a key that never leaves it, before
-          they are sent. Our servers store only the locked version and cannot
-          open it. What we can see is who talks to whom and when, how large an
-          attachment is, group names, reactions, and your profile.
+          <b>Your messages and calls are end-to-end encrypted.</b> Text, photos,
+          videos, voice messages and files are locked on your device, with a key
+          that never leaves it, before they are sent. Our servers store only the
+          locked version and cannot open it. The sound and picture of a call go
+          directly between the devices in the call, encrypted; they never pass
+          through our servers in a form anyone can hear or see. What we can see
+          is who talks to whom and when, who called whom and for how long, how
+          large an attachment is, group names, reactions, and your profile.
         </p>
       </div>
 
@@ -146,6 +149,35 @@
           </td>
         </tr>
         <tr>
+          <th>Calls</th>
+          <td>
+            Who called whom, in which conversation, whether it was a voice or
+            video call, when it started, who answered, and when it ended. This
+            is what makes the phone ring, shows missed calls, and fills your
+            call history. We never receive or record what is said or shown:
+            the audio and video are encrypted between the devices. While a call
+            is running your device tells us every few seconds that it is still
+            in the call, so that a call whose app was closed abruptly ends on
+            its own; those signals are deleted when the call ends.
+          </td>
+        </tr>
+        <tr>
+          <th>Online status and last seen</th>
+          <td>
+            When you last had Mila open. Shown only to people you share an
+            accepted conversation with, and only if you also show yours. You can
+            turn it off in settings, in which case you don&rsquo;t see anyone
+            else&rsquo;s either.
+          </td>
+        </tr>
+        <tr>
+          <th>Chat settings</th>
+          <td>
+            Which conversations you muted, pinned or archived. Visible only to
+            you; the other people in the conversation are not told.
+          </td>
+        </tr>
+        <tr>
           <th>Device keys</th>
           <td>
             The public half of the encryption key of each device you use, a
@@ -156,7 +188,11 @@
         </tr>
         <tr>
           <th>Delivery and read receipts</th>
-          <td>When a message reached someone and when they opened it. You can turn read receipts off in settings.</td>
+          <td>
+            When a message reached someone&rsquo;s device and when they opened it.
+            You can turn read receipts off in settings; delivery (two grey ticks)
+            is always shown, as in other messengers.
+          </td>
         </tr>
         <tr>
           <th>Contact matching (only if you ask for it)</th>
@@ -254,13 +290,28 @@
           <td>Only if you choose Google Sign-In. Google confirms your identity to us; we receive your email address and name.</td>
         </tr>
         <tr>
+          <th>Call connection servers (Google, Cloudflare)</th>
+          <td>
+            When a call starts, each device asks a public &ldquo;STUN&rdquo; server
+            run by Google or Cloudflare for its own internet address, so the two
+            devices can find each other. That server sees your IP address and
+            nothing else. When two networks don&rsquo;t allow a direct
+            connection, the call is relayed through Cloudflare&rsquo;s TURN
+            service. The relay passes along data that is already encrypted end
+            to end, so it sees IP addresses and how much data flows, never the
+            sound or picture.
+          </td>
+        </tr>
+        <tr>
           <th>Your browser&rsquo;s push service (Google, Apple, Mozilla or Microsoft)</th>
           <td>
             Only if you turn notifications on. Notifications travel through the
             service built into your browser or phone. The content is encrypted
             for your device before it leaves us, so the service can see that a
             notification was sent and when, but not what it says. Notifications
-            never contain the text of a message: we cannot read it either.
+            never contain the text of a message: we cannot read it either. A
+            call notification says only who is calling and whether it is a
+            video call.
           </td>
         </tr>
         
@@ -285,7 +336,7 @@
         <li>Your login, password and Google connection.</li>
         <li>Your email address — it is released and someone else could register it.</li>
         <li>Your display name, username, bio and profile photo.</li>
-        <li>Your block list, your reactions, and your notification addresses.</li>
+        <li>Your block list, your reactions, your chat settings, and your notification addresses.</li>
         <li>Your membership of any group conversations.</li>
       </ul>
       <h3>What is not</h3>

@@ -5,8 +5,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  Archive,
+  ArrowLeft,
+  BellOff,
   LogOut,
   MessageCircle,
+  Phone,
+  Pin,
   Search,
   Settings,
   Share2,
@@ -28,6 +33,8 @@ import { supabase } from "./supabase";
 // παντού ως destructured μεταβλητή από τις απαντήσεις του Supabase.
 import * as backend from "./data";
 import type { Chat, Msg, User } from "./data";
+import * as calls from "./calls";
+import { messageSound, unlockAudio } from "./tones";
 import { isNative, isStandalone, isTauri, registerServiceWorker } from "./platform";
 import { bootstrapNative } from "./native";
 import { t, translateError } from "./i18n";
@@ -43,6 +50,8 @@ import {
   chatTitle,
   messageSnippet,
 } from "./components/Conversation";
+import { CallOverlay } from "./components/Call";
+import { CallIcon, CallsList, describeCall, unseenMissed } from "./components/CallsTab";
 import { NewGroupDialog } from "./components/Groups";
 import { InviteDialog } from "./components/Invite";
 
@@ -67,8 +76,35 @@ function isPasswordRecoveryLink() {
 function wantsLanding(): boolean {
   if (isStandalone || isNative || isTauri || isPasswordRecoveryLink()) return false;
   const search = new URLSearchParams(window.location.search);
-  if (search.has("login") || search.has("c") || search.has("code")) return false;
+  if (search.has("login") || search.has("c") || search.has("call") || search.has("code"))
+    return false;
   return !/access_token|error_description/.test(window.location.hash);
+}
+
+/** Ειδοποίηση κλήσης: το app ανοίγει στο /?call=<id>&action=answer|decline|show. */
+function takeCallFromUrl(): { id: string; action: "answer" | "decline" | "show" } | null {
+  const search = new URLSearchParams(window.location.search);
+  const id = search.get("call");
+  if (!id) return null;
+  const raw = search.get("action");
+  search.delete("call");
+  search.delete("action");
+  const rest = search.toString();
+  window.history.replaceState(
+    {},
+    document.title,
+    window.location.pathname + (rest ? `?${rest}` : ""),
+  );
+  return { id, action: raw === "answer" || raw === "decline" ? raw : "show" };
+}
+
+/** Πότε έγινε το τελευταίο πράγμα σε μια συνομιλία: μήνυμα ή κλήση. */
+function activityOf(c: Chat): number {
+  return Math.max(
+    c.last ? Date.parse(c.last.createdAt) : 0,
+    c.lastCall ? Date.parse(c.lastCall.createdAt) : 0,
+    Date.parse(c.createdAt) || 0,
+  );
 }
 
 /** Η ειδοποίηση ανοίγει το app στο /?c=<id συνομιλίας>. Το διαβάζουμε μία
@@ -112,7 +148,10 @@ function App() {
     [imported, setImported] = useState(false),
     [messageHits, setMessageHits] = useState<Msg[]>([]),
     [jumpTo, setJumpTo] = useState<string | null>(null),
-    [mode, setMode] = useState<"chat" | "search" | "settings">("chat"),
+    [mode, setMode] = useState<"chat" | "calls" | "search" | "settings">("chat"),
+    [showArchived, setShowArchived] = useState(false),
+    [callsVersion, setCallsVersion] = useState(0),
+    [missedSeen, setMissedSeen] = useState(0),
     [newGroup, setNewGroup] = useState(false),
     // null = κλειστό· αλλιώς ό,τι να είναι ήδη γραμμένο στο πεδίο.
     [invite, setInvite] = useState<string | null>(null),
@@ -122,7 +161,11 @@ function App() {
     loading = useRef(false),
     loadAgain = useRef(false),
     activeIdRef = useRef<string | null>(null),
-    pendingOpen = useRef<string | null>(null);
+    pendingOpen = useRef<string | null>(null),
+    // Διαβάζεται ΜΙΑ φορά (το useRef θα το ξανάτρεχε σε κάθε render).
+    [callFromUrl] = useState(() => takeCallFromUrl()),
+    pendingCall = useRef(callFromUrl),
+    lastSeenMessages = useRef<Map<string, string> | null>(null);
 
   activeIdRef.current = activeId;
 
@@ -146,6 +189,28 @@ function App() {
         loadAgain.current = false;
         const fresh = await backend.listChats();
         setChats(fresh);
+        calls.setChats(fresh);
+        setCallsVersion((v) => v + 1);
+        // Ήχος για νέο μήνυμα σε ΑΛΛΗ συνομιλία από αυτή που κοιτάζω (όχι σε σίγαση).
+        const previous = lastSeenMessages.current;
+        const now = new Map(fresh.map((c) => [c.id, c.last?.id || ""]));
+        if (previous)
+          for (const c of fresh) {
+            const last = c.last;
+            if (
+              last &&
+              previous.get(c.id) !== last.id &&
+              last.senderId !== me?.id &&
+              !last.deleted &&
+              Date.now() - Date.parse(last.createdAt) < 60_000 &&
+              !(c.mutedUntil && Date.parse(c.mutedUntil) > Date.now()) &&
+              (c.id !== activeIdRef.current || document.visibilityState !== "visible")
+            ) {
+              messageSound();
+              break;
+            }
+          }
+        lastSeenMessages.current = now;
         // Όποιος δεν είχε κλειδί όταν του έγραψα και τώρα έχει, παίρνει τα
         // μηνύματά του. Στο παρασκήνιο, δεν καθυστερεί τη λίστα.
         void backend.deliverPendingKeys();
@@ -166,7 +231,9 @@ function App() {
     } finally {
       loading.current = false;
     }
-  }, [notify]);
+    // Το me χρειάζεται μόνο για το «δικό μου μήνυμα δεν κάνει ήχο».
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notify, me?.id]);
 
   // Επαναφορά συνεδρίας στο άνοιγμα.
   useEffect(() => {
@@ -254,8 +321,78 @@ function App() {
     };
   }, [me?.id, loadChats]);
 
+  // Κλήσεις: όσο υπάρχει συνδεδεμένος χρήστης, το app «ακούει» για
+  // εισερχόμενες. Αν άνοιξε από ειδοποίηση κλήσης, κάνει ό,τι ζητήθηκε.
+  useEffect(() => {
+    if (!me) return;
+    const stop = calls.startCalls(me);
+    const fromUrl = pendingCall.current;
+    pendingCall.current = null;
+    if (fromUrl)
+      void backend
+        .ensureDevice()
+        .catch(() => undefined)
+        .then(() => calls.fromNotification(fromUrl.id, fromUrl.action))
+        .then((call) => {
+          if (call && fromUrl.action === "show") {
+            setMode("chat");
+            setActiveId(call.conversationId);
+          }
+        })
+        .catch((caught) => notify(messageOf(caught)));
+    return stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.id]);
+
+  // «Σε σύνδεση»: κάθε 30'' όσο το app είναι μπροστά, «έφυγα» όταν κρύβεται.
+  useEffect(() => {
+    if (!me) return;
+    const beat = () => {
+      if (document.visibilityState === "visible") void backend.touchPresence(true);
+    };
+    beat();
+    const timer = window.setInterval(beat, 30_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") beat();
+      else void backend.touchPresence(false);
+    };
+    const onHide = () => void backend.touchPresence(false);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onHide);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onHide);
+    };
+  }, [me?.id]);
+
+  useEffect(() => {
+    unlockAudio();
+    const onSeen = () => setMissedSeen((v) => v + 1);
+    window.addEventListener("mila:calls-seen", onSeen);
+    return () => window.removeEventListener("mila:calls-seen", onSeen);
+  }, []);
+
+  // Αδιάβαστα στον τίτλο της καρτέλας και στο εικονίδιο του εγκατεστημένου app.
+  useEffect(() => {
+    const unread = chats
+      .filter((c) => !(c.mutedUntil && Date.parse(c.mutedUntil) > Date.now()))
+      .reduce((n, c) => n + (c.unread || 0), 0);
+    document.title = unread ? `(${unread}) Mila` : "Mila";
+    const nav = navigator as Navigator & {
+      setAppBadge?: (n?: number) => Promise<void>;
+      clearAppBadge?: () => Promise<void>;
+    };
+    try {
+      if (unread) void nav.setAppBadge?.(unread)?.catch(() => undefined);
+      else void nav.clearAppBadge?.()?.catch(() => undefined);
+    } catch {
+      // Δεν το υποστηρίζουν όλα τα συστήματα.
+    }
+  }, [chats]);
+
   // Πάτημα σε ειδοποίηση ενώ το app είναι ήδη ανοιχτό: ο service worker
-  // στέλνει εδώ ποια συνομιλία να ανοίξει.
+  // στέλνει εδώ ποια συνομιλία να ανοίξει (ή τι να κάνει με μια κλήση).
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     const onMessage = (event: MessageEvent) => {
@@ -263,11 +400,25 @@ function App() {
         setMode("chat");
         setActiveId(String(event.data.id));
       }
+      if (event.data?.type === "call-action" && event.data.callId) {
+        const action = ["answer", "decline", "show"].includes(event.data.action)
+          ? event.data.action
+          : "show";
+        void calls
+          .fromNotification(String(event.data.callId), action)
+          .then((call) => {
+            if (call && action === "show") {
+              setMode("chat");
+              setActiveId(call.conversationId);
+            }
+          })
+          .catch((caught) => notify(messageOf(caught)));
+      }
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () =>
       navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, []);
+  }, [notify]);
 
   // Αναζήτηση ανθρώπων (καρτέλα «Βρες άτομα»).
   useEffect(() => {
@@ -421,15 +572,39 @@ function App() {
   }
 
   const term = query.trim().toLowerCase();
-  const visibleChats = chats.filter(
-    (c) => !term || chatTitle(c).toLowerCase().includes(term),
+  const muted = (c: Chat) => Boolean(c.mutedUntil && Date.parse(c.mutedUntil) > Date.now());
+  // Καρφιτσωμένες πρώτα, μετά η πιο πρόσφατη δραστηριότητα (μήνυμα ή κλήση).
+  const ordered = [...chats].sort((a, b) => {
+    const pin = (b.pinnedAt ? 1 : 0) - (a.pinnedAt ? 1 : 0);
+    if (pin) return pin;
+    if (a.pinnedAt && b.pinnedAt) return Date.parse(b.pinnedAt) - Date.parse(a.pinnedAt);
+    return activityOf(b) - activityOf(a);
+  });
+  const archivedChats = ordered.filter((c) => c.archived);
+  const visibleChats = ordered.filter(
+    (c) =>
+      (term ? true : showArchived ? c.archived : !c.archived) &&
+      (!term || chatTitle(c).toLowerCase().includes(term)),
   );
+  const archivedUnread = archivedChats.reduce((n, c) => n + (c.unread ? 1 : 0), 0);
+  void missedSeen;
+  const missedBadge = unseenMissed(chats, me.id);
 
-  function chatSubtitle(c: Chat): string {
+  function chatSubtitle(c: Chat): React.ReactNode {
     if (c.requestStatus === "pending")
       return c.requestFrom === me!.id
         ? t("list.requestSent")
         : t("list.request");
+    // Η τελευταία κλήση, αν είναι πιο πρόσφατη από το τελευταίο μήνυμα.
+    const lastCall = c.lastCall;
+    if (lastCall && (!c.last || Date.parse(lastCall.createdAt) >= Date.parse(c.last.createdAt))) {
+      const summary = describeCall(lastCall, me!.id);
+      return (
+        <span className={`list-call ${summary.missed ? "call-icon-missed" : ""}`}>
+          <CallIcon summary={summary} size={13} /> {summary.label}
+        </span>
+      );
+    }
     if (!c.last) return t("list.start");
     const text = messageSnippet(c.last);
     if (c.last.deleted) return text;
@@ -444,6 +619,21 @@ function App() {
     return text;
   }
 
+  function placeCall(chat: Chat, video: boolean) {
+    calls.placeCall(chat, video).catch((caught) => notify(messageOf(caught)));
+  }
+
+  const sidebarTitle =
+    mode === "search"
+      ? t("nav.find")
+      : mode === "settings"
+        ? t("nav.settings")
+        : mode === "calls"
+          ? t("nav.calls")
+          : showArchived
+            ? t("list.archivedTitle")
+            : t("nav.chats");
+
   return (
     <div className="shell">
       <nav>
@@ -457,6 +647,15 @@ function App() {
           aria-label={t("nav.chats")}
         >
           <MessageCircle />
+        </button>
+        <button
+          className={`nav-calls ${mode === "calls" ? "on" : ""}`}
+          onClick={() => setMode("calls")}
+          title={t("nav.calls")}
+          aria-label={t("nav.calls")}
+        >
+          <Phone />
+          {missedBadge > 0 && mode !== "calls" && <em>{missedBadge}</em>}
         </button>
         <button
           className={mode === "search" ? "on" : ""}
@@ -487,17 +686,22 @@ function App() {
 
       <aside className={`sidebar ${active ? "mobile-hide" : ""}`}>
         <header>
-          <div>
-            <small>MILA</small>
-            <h2>
-              {mode === "search"
-                ? t("nav.find")
-                : mode === "settings"
-                  ? t("nav.settings")
-                  : t("nav.chats")}
-            </h2>
+          <div className="sidebar-title">
+            {mode === "chat" && showArchived && (
+              <button
+                className="icon"
+                onClick={() => setShowArchived(false)}
+                aria-label={t("common.back")}
+              >
+                <ArrowLeft />
+              </button>
+            )}
+            <div>
+              <small>MILA</small>
+              <h2>{sidebarTitle}</h2>
+            </div>
           </div>
-          {mode === "chat" && (
+          {mode === "chat" && !showArchived && (
             <div className="header-actions">
               <button
                 className="icon"
@@ -527,7 +731,7 @@ function App() {
           )}
         </header>
 
-        {mode !== "settings" && (
+        {(mode === "chat" || mode === "search") && (
           <div className="search">
             <Search />
             <input
@@ -620,8 +824,32 @@ function App() {
             blockedVersion={blockedVersion}
             onUnblocked={() => void loadChats()}
           />
+        ) : mode === "calls" ? (
+          <CallsList
+            me={me}
+            chats={chats}
+            version={callsVersion}
+            onCall={placeCall}
+            onOpenChat={(id) => {
+              setMode("chat");
+              setActiveId(id);
+            }}
+          />
         ) : (
           <div className="chatlist">
+            {!term && !showArchived && archivedChats.length > 0 && (
+              <button className="archived-row" onClick={() => setShowArchived(true)}>
+                <div className="avatar archived-icon">
+                  <Archive size={20} />
+                </div>
+                <span>
+                  <strong>
+                    <span className="title">{t("list.archived")}</span>
+                  </strong>
+                </span>
+                {archivedUnread > 0 ? <em>{archivedUnread}</em> : <small>{archivedChats.length}</small>}
+              </button>
+            )}
             {visibleChats.map((c) => (
               <button
                 className={activeId === c.id ? "active" : ""}
@@ -630,17 +858,22 @@ function App() {
               >
                 <div className="avatar">
                   <img src={chatAvatar(c)} alt="" />
+                  {c.type === "direct" && c.others[0]?.presence?.online && <i />}
                 </div>
                 <span>
                   <strong>
                     <span className="title">{chatTitle(c)}</span>
-                    <time>{c.last && listTime(c.last.createdAt)}</time>
+                    <time>{activityOf(c) > Date.parse(c.createdAt) && listTime(new Date(activityOf(c)).toISOString())}</time>
                   </strong>
                   <small className={c.last?.deleted ? "muted-italic" : ""}>
                     {chatSubtitle(c)}
                   </small>
                 </span>
-                {c.unread > 0 && <em>{c.unread}</em>}
+                <span className="list-flags">
+                  {muted(c) && <BellOff size={14} aria-label={t("chat.muted")} />}
+                  {c.pinnedAt && <Pin size={14} aria-label={t("chat.pinned")} />}
+                  {c.unread > 0 && <em className={muted(c) ? "quiet" : ""}>{c.unread}</em>}
+                </span>
               </button>
             ))}
 
@@ -686,6 +919,13 @@ function App() {
                 }
               />
             )}
+            {showArchived && !term && !archivedChats.length && (
+              <Empty
+                icon={<Archive />}
+                title={t("list.archivedEmpty")}
+                text={t("list.archivedHint")}
+              />
+            )}
             {chats.length > 0 &&
               term &&
               !visibleChats.length &&
@@ -705,6 +945,7 @@ function App() {
           <Conversation
             me={me}
             chat={active}
+            chats={chats}
             contacts={contacts}
             jumpTo={jumpTo}
             onJumped={() => setJumpTo(null)}
@@ -728,6 +969,8 @@ function App() {
           />
         )}
       </section>
+
+      <CallOverlay me={me} chats={chats} />
 
       {invite !== null && (
         <InviteDialog me={me} initial={invite} close={() => setInvite(null)} />

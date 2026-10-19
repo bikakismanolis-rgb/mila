@@ -173,6 +173,31 @@ where proname in ('delete_my_account', 'export_my_data');
   `crypto.subtle` υπάρχει μόνο σε ασφαλή origin: `https://`, `capacitor://` και
   `tauri://` είναι εντάξει. Το `http://192.168…` στο dev από το κινητό **δεν** είναι.
 
+## Κλήσεις, μικρόφωνο και κάμερα στα native κελύφη
+
+Στον browser και στο PWA δεν χρειάζεται τίποτα: ο browser ρωτάει τον χρήστη
+την πρώτη φορά. Στα native κελύφη το λειτουργικό θέλει να δηλωθεί από πριν
+ότι το app χρησιμοποιεί μικρόφωνο και κάμερα, αλλιώς οι κλήσεις και τα
+φωνητικά απλώς δεν ξεκινούν.
+
+- **Android** (`android/app/src/main/AndroidManifest.xml`, μετά το
+  `npx cap add android`):
+  `CAMERA`, `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`. Το Capacitor περνάει μόνο
+  του την άδεια στο WebView όταν ο χρήστης πει «ναι».
+- **iOS** (`ios/App/App/Info.plist`): `NSMicrophoneUsageDescription` και
+  `NSCameraUsageDescription`, με μια πρόταση για το γιατί (π.χ. «Για κλήσεις
+  και φωνητικά μηνύματα»). Χωρίς αυτά η Apple απορρίπτει το app.
+- **macOS (Tauri)**: τα ίδια δύο κλειδιά στο `Info.plist` του bundle.
+
+Τι **δεν** κάνουν ακόμα οι κλήσεις, και τι θα χρειαζόταν:
+
+- **Να χτυπάνε σαν κανονικό τηλέφωνο** όταν το app είναι κλειστό (οθόνη
+  κλήσης πάνω από την κλειδωμένη οθόνη). Θέλει CallKit + PushKit (VoIP push)
+  στο iOS και ConnectionService + FCM high-priority στο Android, δηλαδή native
+  κώδικα. Μέχρι τότε η κλήση φτάνει ως ειδοποίηση που την πατάς.
+- **Να συνεχίζουν στο παρασκήνιο στο iPhone.** Το iOS «παγώνει» μια web
+  εφαρμογή όταν πας σε άλλη· στο native app θέλει `UIBackgroundModes: audio, voip`.
+
 ## Σειρά που προτείνω
 
 1. Τρέξε το migration 0006 και δοκίμασε τη διαγραφή σε δοκιμαστικό λογαριασμό.
