@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Search,
   Settings,
+  Share2,
   UserPlus,
   UserRound,
   Users,
@@ -43,6 +44,7 @@ import {
   messageSnippet,
 } from "./components/Conversation";
 import { NewGroupDialog } from "./components/Groups";
+import { InviteDialog } from "./components/Invite";
 
 const messageOf = (caught: unknown) =>
   translateError(caught instanceof Error ? caught.message : String(caught)) ||
@@ -112,6 +114,8 @@ function App() {
     [jumpTo, setJumpTo] = useState<string | null>(null),
     [mode, setMode] = useState<"chat" | "search" | "settings">("chat"),
     [newGroup, setNewGroup] = useState(false),
+    // null = κλειστό· αλλιώς ό,τι να είναι ήδη γραμμένο στο πεδίο.
+    [invite, setInvite] = useState<string | null>(null),
     [blockedVersion, setBlockedVersion] = useState(0),
     [toast, setToast] = useState("");
   const contactInput = useRef<HTMLInputElement>(null),
@@ -497,6 +501,14 @@ function App() {
             <div className="header-actions">
               <button
                 className="icon"
+                onClick={() => setInvite("")}
+                title={t("invite.title")}
+                aria-label={t("invite.title")}
+              >
+                <Share2 />
+              </button>
+              <button
+                className="icon"
                 onClick={() => setNewGroup(true)}
                 title={t("group.new")}
                 aria-label={t("group.new")}
@@ -586,6 +598,11 @@ function App() {
                   icon={<Search />}
                   title={t("people.noneTitle")}
                   text={t("people.noneText")}
+                  action={
+                    <button className="empty-action" onClick={() => setInvite(term)}>
+                      <Share2 size={16} /> {t("invite.notHere")}
+                    </button>
+                  }
                 />
               ) : (
                 <Empty
@@ -662,6 +679,11 @@ function App() {
                 icon={<MessageCircle />}
                 title={t("list.emptyTitle")}
                 text={t("list.emptyText")}
+                action={
+                  <button className="empty-action" onClick={() => setInvite("")}>
+                    <Share2 size={16} /> {t("invite.title")}
+                  </button>
+                }
               />
             )}
             {chats.length > 0 &&
@@ -706,6 +728,10 @@ function App() {
           />
         )}
       </section>
+
+      {invite !== null && (
+        <InviteDialog me={me} initial={invite} close={() => setInvite(null)} />
+      )}
 
       {newGroup && (
         <NewGroupDialog
