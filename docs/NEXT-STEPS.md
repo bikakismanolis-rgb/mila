@@ -15,7 +15,7 @@ WhatsApp και Viber, με email αντί για τηλέφωνο:
   **αρχειοθέτηση** συνομιλίας, emoji στον υπολογιστή.
 
 Ο κώδικας είναι στο branch `claude/exciting-ramanujan-v9dd1k`. Το site
-(`https://mila-web-ivory.vercel.app`) θα ενημερωθεί μόλις γίνει merge στο `main`.
+(`https://mila-web-ivory.vercel.app`) θα ενημερωθεί μόλις γίνει merge στο `master`.
 
 **Τι είναι ήδη στον αέρα:**
 
