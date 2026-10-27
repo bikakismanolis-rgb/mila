@@ -20,7 +20,8 @@
 --     moderation_set_report_status, moderation_suspend, moderation_unsuspend,
 --     moderation_remove_message. Οδηγίες: docs/MODERATION.md.
 --  7. Εξαγωγή δεδομένων με κλήσεις και ρυθμίσεις συνομιλιών, και διαγραφή
---     λογαριασμού που καθαρίζει και ό,τι πρόσθεσε το 0013.
+--     λογαριασμού που καθαρίζει και ό,τι πρόσθεσε το 0013. Η «αποσύνδεση
+--     παντού» σβήνει και τις ειδοποιήσεις όλων των συσκευών.
 --
 -- ΤΙ ΔΕΝ ΠΗΡΑΜΕ ΑΠΟ ΤΟ PR #1: το send_message σε απλό κείμενο (καταργήθηκε
 -- σκόπιμα στο 0010) και το «μπλοκάρισμα» στο auth.users. Ένας λογαριασμός σε
@@ -1342,6 +1343,20 @@ begin
 end;
 $$;
 
+-- «Αποσύνδεση από όλες τις συσκευές»: οι συνεδρίες ακυρώνονται, αλλά οι
+-- συνδρομές ειδοποιήσεων δεν δένονται με συνεδρία. Χωρίς αυτό, ένα χαμένο
+-- κινητό θα συνέχιζε να δείχνει ποιος γράφει και ποιος καλεί. Η συσκευή από
+-- την οποία μπαίνει ξανά ο χρήστης ξαναδηλώνεται μόνη της (refreshPushOwner,
+-- ή από την κάρτα ειδοποιήσεων).
+create or replace function public.remove_my_push_subscriptions()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  delete from push_subscriptions where user_id = auth.uid()
+$$;
+
 -- ---------------------------------------------------------------------------
 -- 9. Δικαιώματα
 -- ---------------------------------------------------------------------------
@@ -1380,6 +1395,7 @@ revoke all on function public.get_presence(uuid) from public, anon;
 revoke all on function public.submit_report(text, uuid, uuid, uuid, text) from public, anon;
 revoke all on function public.export_my_data() from public, anon;
 revoke all on function public.delete_my_account() from public, anon;
+revoke all on function public.remove_my_push_subscriptions() from public, anon;
 
 grant execute on function public.is_active_user() to authenticated;
 grant execute on function public.is_conversation_member(uuid) to authenticated;
@@ -1392,5 +1408,6 @@ grant execute on function public.get_presence(uuid) to authenticated;
 grant execute on function public.submit_report(text, uuid, uuid, uuid, text) to authenticated;
 grant execute on function public.export_my_data() to authenticated;
 grant execute on function public.delete_my_account() to authenticated;
+grant execute on function public.remove_my_push_subscriptions() to authenticated;
 
 notify pgrst, 'reload schema';

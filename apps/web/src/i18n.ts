@@ -649,7 +649,7 @@ const en = {
   "suspended.stillCan": "You can still download your data or delete your account.",
   "account.signOutEverywhere": "Sign out on all devices",
   "account.signOutEverywhereText":
-    "Every phone and computer signed in to your account is signed out, this one too. Useful if you lost a device or signed in somewhere you don't trust.",
+    "Every phone and computer signed in to your account is signed out, this one too, and none of them gets notifications any more. Useful if you lost a device or signed in somewhere you don't trust.",
 
   // --- calls ---
   "call.answerNoPermission":
@@ -1283,7 +1283,7 @@ const el: Record<TKey, string> = {
   "suspended.stillCan": "Μπορείς ακόμα να κατεβάσεις τα δεδομένα σου ή να διαγράψεις τον λογαριασμό σου.",
   "account.signOutEverywhere": "Αποσύνδεση από όλες τις συσκευές",
   "account.signOutEverywhereText":
-    "Αποσυνδέεται κάθε κινητό και υπολογιστής που έχει μπει στον λογαριασμό σου, και αυτή η συσκευή. Χρήσιμο αν έχασες μια συσκευή ή μπήκες κάπου που δεν εμπιστεύεσαι.",
+    "Αποσυνδέεται κάθε κινητό και υπολογιστής που έχει μπει στον λογαριασμό σου, και αυτή η συσκευή, και καμία δεν παίρνει πια ειδοποιήσεις. Χρήσιμο αν έχασες μια συσκευή ή μπήκες κάπου που δεν εμπιστεύεσαι.",
 
   // --- calls ---
   "call.answerNoPermission":

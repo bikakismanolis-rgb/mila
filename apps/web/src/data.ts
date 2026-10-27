@@ -1546,6 +1546,13 @@ export async function removePushSubscription(endpoint: string): Promise<void> {
   if (error) console.warn("Could not remove push subscription:", error.message);
 }
 
+/** «Αποσύνδεση παντού»: καμία συσκευή του λογαριασμού δεν παίρνει πια
+ *  ειδοποιήσεις (π.χ. ένα κινητό που χάθηκε). */
+export async function removeMyPushSubscriptions(): Promise<void> {
+  const { error } = await db().rpc("remove_my_push_subscriptions");
+  if (error) console.warn("Could not remove push subscriptions:", error.message);
+}
+
 /** Το δημόσιο κλειδί με το οποίο ο browser «δένει» τη συνδρομή του στο Mila. */
 export async function pushPublicKey(): Promise<string> {
   const { data, error } = await db().functions.invoke("push", {

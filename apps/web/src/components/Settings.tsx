@@ -624,7 +624,10 @@ function AccountSection({ email }: { email: string }) {
           danger
           onConfirm={async () => {
             // Η κανονική «Αποσύνδεση» είναι μόνο για αυτή τη συσκευή· αυτή
-            // ακυρώνει κάθε συνεδρία του λογαριασμού.
+            // ακυρώνει κάθε συνεδρία του λογαριασμού, και σβήνει τις
+            // ειδοποιήσεις ΟΛΩΝ των συσκευών (οι συνδρομές δεν δένονται με
+            // συνεδρία: ένα χαμένο κινητό θα έδειχνε ακόμα ποιος γράφει).
+            await backend.removeMyPushSubscriptions().catch(() => undefined);
             await disablePushOnSignOut().catch(() => undefined);
             const { error } = await supabase!.auth.signOut({ scope: "global" });
             if (error) throw new Error(messageOf(error));

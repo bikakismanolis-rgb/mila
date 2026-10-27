@@ -566,6 +566,18 @@ set role authenticated;
 select test.ok((select export_my_data()::text not like '%' || :excerpt || '%'), 'reports against me are not in my export');
 reset role;
 
+-- «Αποσύνδεση παντού»: φεύγουν οι ειδοποιήσεις ΟΛΩΝ των συσκευών μου, όχι των άλλων.
+insert into push_subscriptions (user_id, endpoint, p256dh, auth) values
+  (:fay, 'https://fcm.googleapis.com/fcm/send/fay-phone-0000000000000', repeat('p', 87), repeat('a', 22)),
+  (:fay, 'https://fcm.googleapis.com/fcm/send/fay-laptop-000000000000', repeat('p', 87), repeat('a', 22));
+select set_config('request.jwt.claim.sub', :fay, false);
+set role authenticated;
+select remove_my_push_subscriptions();
+reset role;
+select test.ok(not exists (select 1 from push_subscriptions where user_id = :fay),
+  'sign out everywhere removes the push subscriptions of all my devices');
+select test.ok(exists (select 1 from push_subscriptions where user_id = :jon), 'but nobody else''s');
+
 -- ---------------------------------------------------------------------------
 -- 8. Διαγραφή λογαριασμού
 -- ---------------------------------------------------------------------------
