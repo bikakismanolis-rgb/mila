@@ -22,95 +22,12 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <!-- Χωρίς manifest ο Chrome δεν προσφέρει εγκατάσταση από αυτή τη σελίδα. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <style>
-      :root {
-        --purple: #6557e8;
-        --ink: #20202a;
-        --muted: #6b6779;
-        --line: #e9e8ef;
-        --soft: #f4f2ff;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        padding: 0 20px calc(60px + env(safe-area-inset-bottom));
-        font: 400 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
-        color: var(--ink);
-        background: #fff;
-      }
-      main { max-width: 560px; margin: 0 auto; }
-      header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: calc(28px + env(safe-area-inset-top)) 0 8px;
-      }
-      .brand { display: flex; align-items: center; gap: 12px; }
-      .brand img { width: 44px; height: 44px; border-radius: 13px; }
-      .brand b { font-size: 19px; }
-      .lang { display: flex; gap: 6px; font-size: 14px; color: var(--muted); }
-      .lang button {
-        border: 0; background: none; padding: 4px; font: inherit;
-        color: var(--muted); cursor: pointer;
-      }
-      .lang button[aria-pressed="true"] { color: var(--purple); font-weight: 600; }
-      h1 { font-size: 28px; line-height: 1.2; margin: 22px 0 8px; letter-spacing: -0.4px; }
-      .lede { color: #45414f; margin: 0 0 22px; }
-      .tabs { display: flex; gap: 6px; margin: 0 0 16px; flex-wrap: wrap; }
-      .tabs button {
-        border: 1px solid var(--line); background: #fff; border-radius: 20px;
-        padding: 7px 14px; font: inherit; font-size: 14px; color: #45414f; cursor: pointer;
-      }
-      .tabs button[aria-selected="true"] {
-        background: var(--purple); border-color: var(--purple); color: #fff;
-      }
-      .card {
-        border: 1px solid var(--line);
-        border-radius: 16px;
-        padding: 18px 20px;
-      }
-      ol { margin: 0; padding-left: 22px; }
-      li { margin: 0 0 12px; color: #35323f; }
-      li:last-child { margin-bottom: 0; }
-      kbd {
-        display: inline-block;
-        font: 600 14px system-ui, -apple-system, sans-serif;
-        background: var(--soft);
-        color: var(--purple);
-        border-radius: 6px;
-        padding: 1px 7px;
-        white-space: nowrap;
-      }
-      .primary {
-        display: block; width: 100%;
-        border: 0; border-radius: 12px;
-        padding: 14px 18px; margin: 0 0 16px;
-        background: var(--purple); color: #fff;
-        font: 600 16px system-ui, -apple-system, sans-serif;
-        text-align: center; text-decoration: none; cursor: pointer;
-      }
-      .note {
-        border-radius: 12px; padding: 14px 16px; margin: 0 0 18px;
-        font-size: 15px;
-      }
-      .note.warn { background: #fff6e6; border: 1px solid #f0d9a8; color: #6d5212; }
-      .note.ok { background: #effaf3; border: 1px solid #bbe8cf; color: #1d6b40; }
-      .note p { margin: 0; color: inherit; }
-      .note p + p { margin-top: 6px; }
-      h2 { font-size: 17px; margin: 30px 0 8px; }
-      .why p { color: #45414f; margin: 0 0 10px; font-size: 15px; }
-      footer {
-        margin-top: 36px; padding-top: 18px;
-        border-top: 1px solid var(--line);
-        color: var(--muted); font-size: 14px;
-      }
-      [hidden] { display: none !important; }
-    </style>
+    <link rel="stylesheet" href="/install/install.css" />
   </head>
   <body>
     <main>
       <header>
-        <a class="brand" href="/" style="text-decoration: none; color: inherit">
+        <a class="brand" href="/">
           <img src="/icons/icon-192.png" alt="" />
           <b>Mila</b>
         </a>
@@ -196,7 +113,7 @@
           </p>
         </div>
 
-        <a class="primary" href="/" style="margin-top: 26px">Άνοιξε το Mila</a>
+        <a class="primary last" href="/">Άνοιξε το Mila</a>
 
         <footer>
           <a href="/privacy">Πολιτική απορρήτου</a> ·
@@ -279,7 +196,7 @@
           </p>
         </div>
 
-        <a class="primary" href="/" style="margin-top: 26px">Open Mila</a>
+        <a class="primary last" href="/">Open Mila</a>
 
         <footer>
           <a href="/privacy#en">Privacy policy</a> ·
@@ -288,89 +205,6 @@
       </section>
     </main>
 
-    <script>
-      (function () {
-        var ua = navigator.userAgent || "";
-        var isIOS = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-        var isAndroid = /Android/.test(ua);
-        // Ενσωματωμένοι browsers άλλων εφαρμογών: από εκεί δεν γίνεται εγκατάσταση.
-        var inApp = /FBAN|FBAV|FB_IAB|Instagram|Messenger|Viber|Line\/|MicroMessenger|; wv\)/.test(ua);
-        var installed =
-          (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
-          navigator.standalone === true;
-
-        function show(selector, on) {
-          document.querySelectorAll(selector).forEach(function (el) { el.hidden = !on; });
-        }
-
-        // Γλώσσα: ό,τι έχει διαλέξει μέσα στο app, αλλιώς του browser.
-        function setLang(lang) {
-          document.documentElement.lang = lang;
-          document.title = lang === "el" ? "Εγκατάσταση · Mila" : "Install · Mila";
-          document.querySelectorAll("[data-lang]").forEach(function (el) {
-            el.hidden = el.getAttribute("data-lang") !== lang;
-          });
-          document.querySelectorAll("[data-set-lang]").forEach(function (b) {
-            b.setAttribute("aria-pressed", String(b.getAttribute("data-set-lang") === lang));
-          });
-        }
-        var saved = null;
-        try { saved = localStorage.getItem("mila:lang"); } catch (e) {}
-        var browserLang = (navigator.language || "").toLowerCase().indexOf("el") === 0 ? "el" : "en";
-        setLang(saved === "el" || saved === "en" ? saved : browserLang);
-        document.querySelectorAll("[data-set-lang]").forEach(function (b) {
-          b.addEventListener("click", function () {
-            var lang = b.getAttribute("data-set-lang");
-            try { localStorage.setItem("mila:lang", lang); } catch (e) {}
-            setLang(lang);
-          });
-        });
-
-        // Καρτέλες ανά συσκευή, με προεπιλογή αυτή που κρατάει ο χρήστης.
-        function setTab(tab) {
-          document.querySelectorAll("[data-tab]").forEach(function (b) {
-            b.setAttribute("aria-selected", String(b.getAttribute("data-tab") === tab));
-          });
-          document.querySelectorAll("[data-panel]").forEach(function (p) {
-            p.hidden = p.getAttribute("data-panel") !== tab;
-          });
-        }
-        setTab(isIOS ? "ios" : isAndroid ? "android" : "desktop");
-        document.querySelectorAll("[data-tab]").forEach(function (b) {
-          b.addEventListener("click", function () { setTab(b.getAttribute("data-tab")); });
-        });
-
-        show('[data-show="installed"]', installed);
-        show('[data-show="inapp"]', inApp && !installed);
-
-        // Chrome / Edge: εγκατάσταση με ένα πάτημα, όταν ο browser το επιτρέπει.
-        var deferred = null;
-        window.addEventListener("beforeinstallprompt", function (event) {
-          event.preventDefault();
-          deferred = event;
-          if (!installed) show("[data-install]", true);
-        });
-        document.querySelectorAll("[data-install]").forEach(function (b) {
-          b.addEventListener("click", function () {
-            if (!deferred) return;
-            deferred.prompt();
-            deferred.userChoice.then(function () {
-              deferred = null;
-              show("[data-install]", false);
-            });
-          });
-        });
-        window.addEventListener("appinstalled", function () {
-          show("[data-install]", false);
-          show('[data-show="installed"]', true);
-        });
-
-        // Ίδιος service worker με το app: κάνει τη σελίδα εγκαταστάσιμη και στους
-        // παλιότερους Chrome, που τον ζητούσαν.
-        if ("serviceWorker" in navigator) {
-          navigator.serviceWorker.register("/sw.js").catch(function () {});
-        }
-      })();
-    </script>
+    <script src="/install/install.js"></script>
   </body>
 </html>

@@ -1,0 +1,87 @@
+/* Στυλ της σελίδας /install. Σε δικό του αρχείο και όχι μέσα στη σελίδα,
+ * ώστε το Content-Security-Policy (vercel.json) να μη χρειάζεται εξαίρεση
+ * για inline στυλ. */
+
+:root {
+  --purple: #6557e8;
+  --ink: #20202a;
+  --muted: #6b6779;
+  --line: #e9e8ef;
+  --soft: #f4f2ff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0 20px calc(60px + env(safe-area-inset-bottom));
+  font: 400 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: #fff;
+}
+main { max-width: 560px; margin: 0 auto; }
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(28px + env(safe-area-inset-top)) 0 8px;
+}
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+.brand img { width: 44px; height: 44px; border-radius: 13px; }
+.brand b { font-size: 19px; }
+.lang { display: flex; gap: 6px; font-size: 14px; color: var(--muted); }
+.lang button {
+  border: 0; background: none; padding: 4px; font: inherit;
+  color: var(--muted); cursor: pointer;
+}
+.lang button[aria-pressed="true"] { color: var(--purple); font-weight: 600; }
+h1 { font-size: 28px; line-height: 1.2; margin: 22px 0 8px; letter-spacing: -0.4px; }
+.lede { color: #45414f; margin: 0 0 22px; }
+.tabs { display: flex; gap: 6px; margin: 0 0 16px; flex-wrap: wrap; }
+.tabs button {
+  border: 1px solid var(--line); background: #fff; border-radius: 20px;
+  padding: 7px 14px; font: inherit; font-size: 14px; color: #45414f; cursor: pointer;
+}
+.tabs button[aria-selected="true"] {
+  background: var(--purple); border-color: var(--purple); color: #fff;
+}
+.card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px 20px;
+}
+ol { margin: 0; padding-left: 22px; }
+li { margin: 0 0 12px; color: #35323f; }
+li:last-child { margin-bottom: 0; }
+kbd {
+  display: inline-block;
+  font: 600 14px system-ui, -apple-system, sans-serif;
+  background: var(--soft);
+  color: var(--purple);
+  border-radius: 6px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.primary {
+  display: block; width: 100%;
+  border: 0; border-radius: 12px;
+  padding: 14px 18px; margin: 0 0 16px;
+  background: var(--purple); color: #fff;
+  font: 600 16px system-ui, -apple-system, sans-serif;
+  text-align: center; text-decoration: none; cursor: pointer;
+}
+.primary.last { margin-top: 26px; }
+.note {
+  border-radius: 12px; padding: 14px 16px; margin: 0 0 18px;
+  font-size: 15px;
+}
+.note.warn { background: #fff6e6; border: 1px solid #f0d9a8; color: #6d5212; }
+.note.ok { background: #effaf3; border: 1px solid #bbe8cf; color: #1d6b40; }
+.note p { margin: 0; color: inherit; }
+.note p + p { margin-top: 6px; }
+h2 { font-size: 17px; margin: 30px 0 8px; }
+.why p { color: #45414f; margin: 0 0 10px; font-size: 15px; }
+footer {
+  margin-top: 36px; padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 14px;
+}
+[hidden] { display: none !important; }
