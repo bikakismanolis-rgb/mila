@@ -1443,9 +1443,10 @@ async function systemNotification(call: Call) {
 async function closeNotification(callId: string) {
   try {
     const reg = await navigator.serviceWorker?.getRegistration();
+    // Μόνο το «σε καλεί»· το «αναπάντητη» που μόλις έδειξε ο worker μένει.
     for (const n of (await reg?.getNotifications({ tag: `call:${callId}` })) ||
       [])
-      n.close();
+      if ((n.data as { ring?: boolean } | null)?.ring === true) n.close();
   } catch {
     // όπως πάνω
   }
