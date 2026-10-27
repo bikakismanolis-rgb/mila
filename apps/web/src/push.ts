@@ -94,6 +94,7 @@ export async function enablePush(): Promise<void> {
     p256dh: json.keys.p256dh,
     auth: json.keys.auth,
   });
+  setPushOfferAgain(false);
 }
 
 export async function disablePush(): Promise<void> {
@@ -102,6 +103,39 @@ export async function disablePush(): Promise<void> {
   if (!subscription) return;
   await backend.removePushSubscription(subscription.endpoint);
   await subscription.unsubscribe();
+}
+
+// Μετά από αποσύνδεση ο browser κρατά την άδεια («granted»), άρα η κάρτα στη
+// λίστα συνομιλιών (που ρωτά μόνο όσους δεν έχουν απαντήσει) δεν θα ξαναφαινόταν
+// ποτέ, και οι ειδοποιήσεις θα έμεναν κλειστές χωρίς να το ξέρει κανείς.
+const OFFER_AGAIN_KEY = "mila:push-offer-again";
+
+/** Να ξαναπροταθούν οι ειδοποιήσεις, παρότι ο browser έχει ήδη δώσει άδεια; */
+export function pushOfferAgain(): boolean {
+  try {
+    return localStorage.getItem(OFFER_AGAIN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setPushOfferAgain(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(OFFER_AGAIN_KEY, "1");
+    else localStorage.removeItem(OFFER_AGAIN_KEY);
+  } catch {
+    // Ιδιωτική περιήγηση: απλώς δεν θα ξαναπροταθούν.
+  }
+}
+
+/** Αποσύνδεση (ή διαγραφή λογαριασμού): η συσκευή σταματά να παίρνει
+ *  ειδοποιήσεις, και αν τις είχε, η επόμενη σύνδεση τις ξαναπροτείνει. Όχι
+ *  όταν τις κλείνει ο ίδιος ο χρήστης από τις Ρυθμίσεις (εκεί disablePush). */
+export async function disablePushOnSignOut(): Promise<void> {
+  const reg = await registration();
+  if (!(await reg?.pushManager.getSubscription())) return;
+  setPushOfferAgain(true);
+  await disablePush();
 }
 
 /**

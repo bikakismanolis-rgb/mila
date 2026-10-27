@@ -20,7 +20,7 @@ import type { Device, Privacy, User } from "../data";
 import { privacyPolicyUrl, termsUrl } from "../platform";
 import { lang, setLang, t, translateError } from "../i18n";
 import type { Lang } from "../i18n";
-import { disablePush, enablePush, pushState } from "../push";
+import { disablePush, disablePushOnSignOut, enablePush, pushState } from "../push";
 import type { PushState } from "../push";
 import { ConfirmDialog, Modal } from "./common";
 import { listTime } from "../format";
@@ -625,7 +625,7 @@ function AccountSection({ email }: { email: string }) {
           onConfirm={async () => {
             // Η κανονική «Αποσύνδεση» είναι μόνο για αυτή τη συσκευή· αυτή
             // ακυρώνει κάθε συνεδρία του λογαριασμού.
-            await disablePush().catch(() => undefined);
+            await disablePushOnSignOut().catch(() => undefined);
             const { error } = await supabase!.auth.signOut({ scope: "global" });
             if (error) throw new Error(messageOf(error));
             location.reload();
@@ -672,7 +672,7 @@ export function DeleteAccountDialog({
     try {
       // Πρώτα φεύγει η συνδρομή ειδοποιήσεων αυτής της συσκευής, όσο ακόμα
       // υπάρχει λογαριασμός για να το ζητήσει.
-      await disablePush().catch(() => undefined);
+      await disablePushOnSignOut().catch(() => undefined);
       await backend.deleteMyAccount();
       // Ο λογαριασμός δεν υπάρχει πια, άρα ούτε το state. Καθαρό reload είναι
       // πιο ασφαλές από το να ξηλώνουμε το δέντρο του React με το χέρι.

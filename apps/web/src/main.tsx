@@ -39,7 +39,7 @@ import { isNative, isStandalone, isTauri, registerServiceWorker } from "./platfo
 import { bootstrapNative } from "./native";
 import { t, translateError } from "./i18n";
 import { listTime } from "./format";
-import { disablePush, refreshPushOwner } from "./push";
+import { disablePushOnSignOut, refreshPushOwner } from "./push";
 import * as outbox from "./outbox";
 import { Empty } from "./components/common";
 import { Login } from "./components/Login";
@@ -604,7 +604,7 @@ function App() {
     // Η συσκευή σταματά να παίρνει ειδοποιήσεις για αυτόν τον λογαριασμό.
     // Με όριο χρόνου: η αποσύνδεση δεν περιμένει ένα αργό δίκτυο.
     await Promise.race([
-      disablePush().catch(() => undefined),
+      disablePushOnSignOut().catch(() => undefined),
       new Promise((resolve) => setTimeout(resolve, 2500)),
     ]);
     // Μόνο από αυτή τη συσκευή, όπως στο WhatsApp. Το «παντού» (προεπιλογή του

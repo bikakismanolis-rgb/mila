@@ -11,7 +11,7 @@
 import React, { useEffect, useState } from "react";
 import { BellRing, Share, X } from "lucide-react";
 import * as calls from "../calls";
-import { enablePush, pushSupported } from "../push";
+import { enablePush, pushOfferAgain, pushSupported, setPushOfferAgain } from "../push";
 import { isIOS, isNative, isStandalone, isTauri } from "../platform";
 import { t, translateError } from "../i18n";
 import { Modal } from "./common";
@@ -42,9 +42,14 @@ const quiet = () => Date.now() - stamp(DISMISSED_KEY) < QUIET_DAYS * 86400_000;
 /** iPhone/iPad σε απλή καρτέλα του browser: εκεί δεν υπάρχει Web Push. */
 const needsHomeScreen = isIOS && !isStandalone && !isNative && !isTauri;
 
-/** Ο browser δεν έχει ρωτήσει ακόμα (ούτε «ναι» ούτε «όχι»). */
+/** Ο browser δεν έχει ρωτήσει ακόμα (ούτε «ναι» ούτε «όχι»), ή είχε πει «ναι»
+ *  αλλά οι ειδοποιήσεις έκλεισαν με την αποσύνδεση (δες pushOfferAgain). Τότε
+ *  το «Άνοιγμα» δεν δείχνει καν παράθυρο του browser. */
 const askable = () =>
-  pushSupported && typeof Notification !== "undefined" && Notification.permission === "default";
+  pushSupported &&
+  typeof Notification !== "undefined" &&
+  (Notification.permission === "default" ||
+    (Notification.permission === "granted" && pushOfferAgain()));
 
 type Offer = "enable" | "homeScreen" | null;
 
@@ -96,6 +101,7 @@ export function PushCard({ notify }: { notify: (message: string) => void }) {
 
   function dismiss() {
     setStamp(DISMISSED_KEY);
+    setPushOfferAgain(false);
     setOffer(null);
   }
 
@@ -176,6 +182,7 @@ export function PushAfterCall({
       icon={<BellRing size={18} />}
       close={() => {
         setStamp(DISMISSED_KEY);
+        setPushOfferAgain(false);
         done();
       }}
       locked={working}
@@ -186,6 +193,7 @@ export function PushAfterCall({
           className="ghost"
           onClick={() => {
             setStamp(DISMISSED_KEY);
+            setPushOfferAgain(false);
             done();
           }}
           disabled={working}
