@@ -1540,6 +1540,8 @@ export async function joinCall(callId: string): Promise<Call> {
 
 export const declineCall = (callId: string) => callRpc("decline_call", { p_call: callId });
 export const leaveCall = (callId: string) => callRpc("leave_call", { p_call: callId });
+/** Σαν το leaveCall, όταν η σύνδεση δεν στήθηκε ποτέ: στο ιστορικό «δεν συνδέθηκε». */
+export const failCall = (callId: string) => callRpc("fail_call", { p_call: callId });
 export const callHeartbeat = (callId: string) => callRpc("call_heartbeat", { p_call: callId });
 
 export async function getCall(callId: string): Promise<Call | null> {
@@ -1586,8 +1588,12 @@ export async function iceServers(): Promise<{ servers: RTCIceServer[]; relay: bo
 }
 
 /** Νέα κλήση ή αλλαγή σε κλήση (απάντησε κάποιος, έκλεισε) σε συνομιλία μου.
- *  Το RLS φέρνει μόνο ό,τι αφορά τις δικές μου συνομιλίες. */
-export function subscribeToCalls(onChange: (callId: string) => void): RealtimeChannel {
+ *  Το RLS φέρνει μόνο ό,τι αφορά τις δικές μου συνομιλίες. Το onReady τρέχει
+ *  κάθε φορά που το κανάλι (ξανα)συνδέεται: ό,τι έγινε πριν δεν ξανάρχεται. */
+export function subscribeToCalls(
+  onChange: (callId: string) => void,
+  onReady?: () => void,
+): RealtimeChannel {
   const pick = (key: string) => (payload: { new?: unknown }) => {
     const row = payload.new as Record<string, unknown> | undefined;
     if (typeof row?.[key] === "string") onChange(row[key] as string);
@@ -1600,7 +1606,9 @@ export function subscribeToCalls(onChange: (callId: string) => void): RealtimeCh
       { event: "*", schema: "public", table: "call_participants" },
       pick("call_id"),
     );
-  channel.subscribe();
+  channel.subscribe((status) => {
+    if (status === "SUBSCRIBED") onReady?.();
+  });
   return channel;
 }
 

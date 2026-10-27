@@ -652,6 +652,15 @@ const en = {
   "account.signOutEverywhere": "Sign out on all devices",
   "account.signOutEverywhereText":
     "Every phone and computer signed in to your account is signed out, this one too. Useful if you lost a device or signed in somewhere you don't trust.",
+
+  // --- calls ---
+  "call.answerNoPermission":
+    "You couldn't answer: Mila isn't allowed to use your microphone. Allow it in your browser's settings for this site, then call them back.",
+  "call.answerNoMic": "You couldn't answer: no microphone was found on this device.",
+  "call.answerMicBusy":
+    "You couldn't answer: another app is using the microphone. Close it, then call them back.",
+  "call.answerMediaFailed":
+    "You couldn't answer: the microphone didn't open. Call them back to try again.",
 } as const;
 
 export type TKey = keyof typeof en;
@@ -1247,6 +1256,15 @@ const el: Record<TKey, string> = {
   "account.signOutEverywhere": "Αποσύνδεση από όλες τις συσκευές",
   "account.signOutEverywhereText":
     "Αποσυνδέεται κάθε κινητό και υπολογιστής που έχει μπει στον λογαριασμό σου, και αυτή η συσκευή. Χρήσιμο αν έχασες μια συσκευή ή μπήκες κάπου που δεν εμπιστεύεσαι.",
+
+  // --- calls ---
+  "call.answerNoPermission":
+    "Δεν μπόρεσες να απαντήσεις: το Mila δεν έχει άδεια για το μικρόφωνο. Δώσ' την από τις ρυθμίσεις του browser για αυτό το site και κάλεσε πίσω.",
+  "call.answerNoMic": "Δεν μπόρεσες να απαντήσεις: δεν βρέθηκε μικρόφωνο σε αυτή τη συσκευή.",
+  "call.answerMicBusy":
+    "Δεν μπόρεσες να απαντήσεις: άλλη εφαρμογή χρησιμοποιεί το μικρόφωνο. Κλείσ' την και κάλεσε πίσω.",
+  "call.answerMediaFailed":
+    "Δεν μπόρεσες να απαντήσεις: το μικρόφωνο δεν άνοιξε. Κάλεσε πίσω για να ξαναδοκιμάσεις.",
 };
 
 const dictionaries: Record<Lang, Record<TKey, string>> = { en, el };

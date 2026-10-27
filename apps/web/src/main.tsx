@@ -1097,5 +1097,10 @@ createRoot(document.getElementById("root")!).render(
   </ErrorBoundary>,
 );
 
-registerServiceWorker();
+// Νέα έκδοση του site: η σελίδα ξαναφορτώνει μόνη της, αλλά ποτέ όσο τρέχει
+// ή χτυπάει κλήση (δες registerServiceWorker).
+registerServiceWorker({
+  busy: () => calls.activeCallId() !== null || calls.snapshot().incoming.length > 0,
+  watch: calls.subscribe,
+});
 void bootstrapNative();

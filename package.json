@@ -16,8 +16,8 @@
     "desktop": "tauri dev",
     "desktop:build": "tauri build",
     "tauri": "tauri",
-    "test": "node scripts/test-e2ee.mjs && node scripts/test-webpush.mjs && node scripts/test-ice.mjs",
-    "e2e": "bash scripts/e2e/setup.sh && node scripts/e2e/chat-call.mjs && bash scripts/e2e/setup.sh && node scripts/e2e/group-call.mjs && bash scripts/e2e/setup.sh && node scripts/e2e/media.mjs"
+    "test": "node scripts/test-e2ee.mjs && node scripts/test-webpush.mjs && node scripts/test-ice.mjs && node scripts/test-push-calls.mjs && node scripts/test-sw.mjs",
+    "e2e": "bash scripts/e2e/setup.sh && node scripts/e2e/chat-call.mjs && bash scripts/e2e/setup.sh && node scripts/e2e/group-call.mjs && bash scripts/e2e/setup.sh && node scripts/e2e/media.mjs && bash scripts/e2e/setup.sh && node scripts/e2e/call-failures.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",

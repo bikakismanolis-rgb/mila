@@ -54,15 +54,59 @@ export const passwordResetRedirectUrl = `${authRedirectUrl}/?resetPassword=1`;
  */
 export const privacyPolicyUrl = `${publicSiteUrl}/privacy`;
 
-/** Δηλώνει τον service worker. Μόνο σε browser production build. */
-export function registerServiceWorker(): void {
+/** Πότε ΔΕΝ κάνει να ξαναφορτώσει η σελίδα (π.χ. στη μέση μιας κλήσης), και
+ *  πώς μαθαίνουμε ότι αυτό άλλαξε. */
+export type ReloadGuard = {
+  busy: () => boolean;
+  watch: (listener: () => void) => () => void;
+};
+
+/** Δηλώνει τον service worker. Μόνο σε browser production build.
+ *
+ *  Νέα έκδοση: ο νέος worker αναλαμβάνει αμέσως (skipWaiting), αλλά ένα
+ *  ανοιχτό παράθυρο τρέχει ακόμα τον παλιό κώδικα μέχρι να ξαναφορτώσει.
+ *  Το ξαναφορτώνουμε μόνοι μας όταν είναι ακίνδυνο: όταν δεν φαίνεται (ο
+ *  χρήστης δεν χάνει κάτι που βλέπει) και ΠΟΤΕ όσο τρέχει ή χτυπάει κλήση.
+ *  Αν εκείνη τη στιγμή δεν γίνεται, ξαναρωτάμε όταν αλλάξει κάτι από τα δύο. */
+export function registerServiceWorker(guard?: ReloadGuard): void {
   if (isNative || isTauri) return; // τα native έχουν ήδη τα assets τοπικά
   if (!import.meta.env.PROD) return; // στο dev μόνο μπερδεύει
   if (!("serviceWorker" in navigator)) return;
 
+  // Πρώτη επίσκεψη: ο worker «παίρνει» μια σελίδα που δεν είχε κανέναν. Δεν
+  // είναι νέα έκδοση, δεν χρειάζεται τίποτα.
+  let controlled = Boolean(navigator.serviceWorker.controller);
+  let updated = false;
+  let reloading = false;
+  const reloadIfSafe = () => {
+    if (!updated || reloading || document.visibilityState !== "hidden") return;
+    if (guard?.busy()) return;
+    reloading = true;
+    window.location.reload();
+  };
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (controlled) updated = true;
+    controlled = true;
+    reloadIfSafe();
+  });
+  document.addEventListener("visibilitychange", reloadIfSafe);
+  guard?.watch(reloadIfSafe);
+
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js")
+      .then((registration) => {
+        // Ένα app που μένει ανοιχτό μέρες δεν «πλοηγείται» ποτέ, άρα ο browser
+        // δεν ελέγχει μόνος του για νέα έκδοση. Ελέγχουμε όταν ξαναέρχεται
+        // μπροστά, το πολύ μία φορά την ώρα.
+        let checkedAt = Date.now();
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState !== "visible" || Date.now() - checkedAt < 3_600_000)
+            return;
+          checkedAt = Date.now();
+          void registration.update().catch(() => undefined);
+        });
+      })
       .catch((error) => console.error("Service worker registration failed:", error));
   });
 }
