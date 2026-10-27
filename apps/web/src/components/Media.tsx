@@ -18,6 +18,7 @@ import { t } from "../i18n";
 import { dayLabel, fileSize, time } from "../format";
 import { canSqueezeVideo, prepareSqueeze, prepareVideo, preparePhoto } from "../media";
 import { fitsUpload, shouldSqueeze, videoPlan } from "../limits";
+import { holdReload } from "../platform";
 import { Modal } from "./common";
 import { chatAvatar, chatTitle } from "./Conversation";
 
@@ -207,6 +208,9 @@ export function SendFilesDialog({
 
   // Κλείνει το παράθυρο (π.χ. άλλαξε συνομιλία): η συμπίεση σταματά.
   useEffect(() => () => abort.current?.abort(), []);
+
+  // Όσο είναι ανοιχτό, η σελίδα δεν ξαναφορτώνει μόνη της για νέα έκδοση.
+  useEffect(() => holdReload(), []);
 
   useEffect(() => {
     let alive = true;

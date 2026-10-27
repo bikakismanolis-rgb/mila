@@ -73,13 +73,53 @@ export type ReloadGuard = {
   watch: (listener: () => void) => () => void;
 };
 
+// Δουλειά που θα χανόταν αν ξαναφόρτωνε η σελίδα: ηχογράφηση στη μέση,
+// αρχεία που ετοιμάζονται για αποστολή, κείμενο που δεν στάλθηκε. Όποιος την
+// κάνει κρατά μία «κράτηση» όσο κρατάει.
+let holds = 0;
+const holdListeners = new Set<() => void>();
+
+/** Όσο ισχύει, η σελίδα δεν ξαναφορτώνει μόνη της για νέα έκδοση. Επιστρέφει
+ *  τη συνάρτηση που την αφήνει (π.χ. ως cleanup ενός useEffect). */
+export function holdReload(): () => void {
+  holds += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    holds -= 1;
+    for (const listener of holdListeners) listener();
+  };
+}
+
+/** Τρέχει αυτή η σελίδα παλιότερο build από αυτό που δίνει τώρα ο server;
+ *  Ο worker αλλάζει και όταν η σελίδα έχει ήδη φορτώσει τη νέα έκδοση (η
+ *  πλοήγηση πάει πρώτα στο δίκτυο, και ο νέος worker εγκαθίσταται μετά):
+ *  τότε δεν υπάρχει λόγος να ξαναφορτώσει. Χωρίς δίκτυο ή με σφάλμα: όχι. */
+async function staleBuild(): Promise<boolean> {
+  const running = document
+    .querySelector<HTMLScriptElement>('script[type="module"][src*="/assets/"]')
+    ?.getAttribute("src");
+  if (!running) return true;
+  try {
+    // Όχι πλοήγηση: ο worker δεν την πιάνει, πάει κατευθείαν στο δίκτυο.
+    const response = await fetch("/", { cache: "no-store" });
+    if (!response.ok) return false;
+    const html = await response.text();
+    return html.includes('id="root"') && !html.includes(running);
+  } catch {
+    return false;
+  }
+}
+
 /** Δηλώνει τον service worker. Μόνο σε browser production build.
  *
  *  Νέα έκδοση: ο νέος worker αναλαμβάνει αμέσως (skipWaiting), αλλά ένα
  *  ανοιχτό παράθυρο τρέχει ακόμα τον παλιό κώδικα μέχρι να ξαναφορτώσει.
  *  Το ξαναφορτώνουμε μόνοι μας όταν είναι ακίνδυνο: όταν δεν φαίνεται (ο
- *  χρήστης δεν χάνει κάτι που βλέπει) και ΠΟΤΕ όσο τρέχει ή χτυπάει κλήση.
- *  Αν εκείνη τη στιγμή δεν γίνεται, ξαναρωτάμε όταν αλλάξει κάτι από τα δύο. */
+ *  χρήστης δεν χάνει κάτι που βλέπει), ΠΟΤΕ όσο τρέχει ή χτυπάει κλήση, και
+ *  ποτέ όσο κάτι κρατά holdReload(). Αν εκείνη τη στιγμή δεν γίνεται,
+ *  ξαναρωτάμε όταν αλλάξει κάτι από αυτά. */
 export function registerServiceWorker(guard?: ReloadGuard): void {
   if (isNative || isTauri) return; // τα native έχουν ήδη τα assets τοπικά
   if (!import.meta.env.PROD) return; // στο dev μόνο μπερδεύει
@@ -92,16 +132,22 @@ export function registerServiceWorker(guard?: ReloadGuard): void {
   let reloading = false;
   const reloadIfSafe = () => {
     if (!updated || reloading || document.visibilityState !== "hidden") return;
-    if (guard?.busy()) return;
+    if (holds > 0 || guard?.busy()) return;
     reloading = true;
     window.location.reload();
   };
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (controlled) updated = true;
+    const before = controlled;
     controlled = true;
-    reloadIfSafe();
+    if (!before) return;
+    void staleBuild().then((stale) => {
+      if (!stale) return;
+      updated = true;
+      reloadIfSafe();
+    });
   });
   document.addEventListener("visibilitychange", reloadIfSafe);
+  holdListeners.add(reloadIfSafe);
   guard?.watch(reloadIfSafe);
 
   window.addEventListener("load", () => {

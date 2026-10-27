@@ -12,6 +12,7 @@ import type { Attachment, MediaInfo } from "../data";
 import { MAX_VOICE_SECONDS, canRecord, startRecording } from "../media";
 import type { Recording } from "../media";
 import { lang, t, translateError } from "../i18n";
+import { holdReload } from "../platform";
 import { clock } from "./Call";
 
 // ---------------------------------------------------------------------------
@@ -87,6 +88,10 @@ export function VoiceButton({
 
   // Αν φύγει από τη συνομιλία στη μέση, η ηχογράφηση ακυρώνεται.
   useEffect(() => () => recording.current?.cancel(), []);
+
+  // Όσο γράφει, η σελίδα δεν ξαναφορτώνει μόνη της για νέα έκδοση.
+  const active = mode !== "idle";
+  useEffect(() => (active ? holdReload() : undefined), [active]);
 
   async function begin(locked: boolean) {
     if (modeRef.current !== "idle") return;
