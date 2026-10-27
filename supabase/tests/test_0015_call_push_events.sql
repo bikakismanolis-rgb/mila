@@ -47,10 +47,10 @@ grant execute on all functions in schema test to authenticated, service_role;
 
 delete from rate_limit_events;
 
-\set eve  '''55555555-0000-4000-8000-000000000005'''
-\set fay  '''66666666-0000-4000-8000-000000000006'''
-\set gus  '''77777777-0000-4000-8000-000000000007'''
-\set hal  '''88888888-0000-4000-8000-000000000008'''
+\set eve  '''e1500000-0000-4000-8000-000000000005'''
+\set fay  '''f1500000-0000-4000-8000-000000000006'''
+\set gus  '''a1500000-0000-4000-8000-000000000007'''
+\set hal  '''b1500000-0000-4000-8000-000000000008'''
 
 insert into auth.users (id, email, raw_user_meta_data) values
   (:eve, 'eve@example.org', '{"display_name":"Eve Evans"}'),
