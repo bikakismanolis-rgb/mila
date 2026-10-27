@@ -54,7 +54,8 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 - Mute, pin (up to 3) and archive chats; unread divider; an emoji picker on desktop; unread count on the app icon
 - Email and password sign-in, Google Sign-In, profiles with an optional photo
 - People search that never lists strangers: they show up only for their exact, full email
-- One-to-one and group conversations, message requests, accept and reject, blocking and reporting
+- One-to-one and group conversations, message requests, accept and reject, blocking
+- Reporting a message, a group or a person; the reporter may choose to forward the text, since nobody else can read it. Moderators get a content-free push, and accounts can be suspended (see `docs/MODERATION.md`)
 - End-to-end encrypted messages and attachments (see below)
 - Realtime messages, typing indicators, read receipts and unread badges
 - Photo and file attachments up to 15 MB
@@ -122,7 +123,7 @@ Supabase Auth has its own per-IP limits on top (Authentication → Rate Limits i
 1. A TURN relay for calls. Without one, calls between two mobile networks that both use carrier-grade NAT can fail to connect. Cloudflare's TURN service has a free tier: set `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` as secrets of the `push` Edge Function (or `TURN_URLS` with `TURN_SECRET` for your own coturn). See `docs/NEXT-STEPS.md`.
 2. Turn "Confirm email" back on. It is off for local testing, which lets anyone register an address they do not own.
 3. Upload scanning is impossible for encrypted files by design; storage quotas and retention still need a decision.
-4. Abuse review tooling for the reports table. Reported messages are encrypted, so a report can only carry what the reporter chooses to forward.
+4. Add yourself as a moderator and read `docs/MODERATION.md` (reports, suspension, the EU Digital Services Act in plain words). In Supabase → Authentication, set the minimum password length to 8, like the app.
 5. Accessibility audit and terms of use.
 6. Forward secrecy for the encryption (see Security status).
 

@@ -83,7 +83,7 @@ const en = {
   "login.email": "Email address",
   "login.password": "Password",
   "login.yourPassword": "Your password",
-  "login.passwordHint": "At least 6 characters",
+  "login.passwordHint": "At least 8 characters",
   "login.displayName": "Display name",
   "login.displayNameNote": "(new accounts)",
   "login.displayNameHint": "How people know you",
@@ -395,7 +395,7 @@ const en = {
     "Confirm your email first — open the link we sent you, then sign in.",
   "err.alreadyRegistered":
     "There is already an account with this email. Sign in instead.",
-  "err.passwordShort": "Password must be at least 6 characters.",
+  "err.passwordShort": "Password must be at least 8 characters.",
   "err.samePassword": "Choose a password different from your current one.",
   "err.rateLimitSeconds": "Too many attempts. Try again in {n} seconds.",
   "err.rateLimit": "Too many attempts. Please wait a little and try again.",
@@ -617,6 +617,41 @@ const en = {
 
   "err.editWindow": "Messages can only be edited for 15 minutes after sending.",
   "err.pinLimit": "You can pin up to 3 chats.",
+
+  // --- safety ---
+  "report.titleMessage": "Report this message",
+  "report.titleGroup": "Report the group {name}",
+  "report.textGroup": "Tell us briefly what happened. Nobody in the group is told.",
+  "report.group": "Report group",
+  "report.shareMessage": "Also send the text of this message to the moderators",
+  "report.shareRecent": "Also send the last {n} messages of this chat to the moderators",
+  "report.shareHint":
+    "Messages are end-to-end encrypted, so the moderators can't read them. They only see the text you choose to send here.",
+  "report.nothingToShare":
+    "Messages are end-to-end encrypted, so the moderators can't read them. They will see who you reported and when.",
+  "report.preview": "This is exactly what will be sent:",
+  "report.attachment": "[file: {name}]",
+  "report.voice": "[voice message]",
+  "report.errTarget": "This can no longer be reported.",
+  "report.errSelf": "You can't report yourself.",
+  "report.errReason": "Write a few words about what happened (up to 500 characters).",
+  "report.errLimit": "You've sent a lot of reports today. Try again tomorrow.",
+  "err.suspended": "Your account is suspended.",
+  "err.nameReserved": "This name is reserved. Please choose another one.",
+  "err.nameLength": "Your name must be between 2 and 60 characters.",
+  "err.enterPassword": "Enter your password.",
+  "suspended.title": "Your account has been suspended",
+  "suspended.text":
+    "Since {date} you can't send messages, call or find people on Mila. Your data has not been deleted.",
+  "suspended.reason": "The moderators' reason:",
+  "suspended.noReason": "The moderators did not add a note.",
+  "suspended.contestBefore": "If you think this is a mistake, write to us at the address in our",
+  "suspended.contestLink": "privacy policy",
+  "suspended.contestAfter": ". We will look at it again.",
+  "suspended.stillCan": "You can still download your data or delete your account.",
+  "account.signOutEverywhere": "Sign out on all devices",
+  "account.signOutEverywhereText":
+    "Every phone and computer signed in to your account is signed out, this one too. Useful if you lost a device or signed in somewhere you don't trust.",
 } as const;
 
 export type TKey = keyof typeof en;
@@ -643,7 +678,7 @@ const el: Record<TKey, string> = {
   "login.email": "Διεύθυνση email",
   "login.password": "Κωδικός",
   "login.yourPassword": "Ο κωδικός σου",
-  "login.passwordHint": "Τουλάχιστον 6 χαρακτήρες",
+  "login.passwordHint": "Τουλάχιστον 8 χαρακτήρες",
   "login.displayName": "Όνομα",
   "login.displayNameNote": "(για νέους λογαριασμούς)",
   "login.displayNameHint": "Πώς θα σε βλέπουν οι άλλοι",
@@ -955,7 +990,7 @@ const el: Record<TKey, string> = {
     "Επιβεβαίωσε πρώτα το email σου — άνοιξε τον σύνδεσμο που σου στείλαμε, και μετά συνδέσου.",
   "err.alreadyRegistered":
     "Υπάρχει ήδη λογαριασμός με αυτό το email. Κάνε σύνδεση.",
-  "err.passwordShort": "Ο κωδικός θέλει τουλάχιστον 6 χαρακτήρες.",
+  "err.passwordShort": "Ο κωδικός θέλει τουλάχιστον 8 χαρακτήρες.",
   "err.samePassword": "Διάλεξε κωδικό διαφορετικό από τον τωρινό.",
   "err.rateLimitSeconds": "Πολλές προσπάθειες. Δοκίμασε ξανά σε {n} δευτερόλεπτα.",
   "err.rateLimit": "Πολλές προσπάθειες. Περίμενε λίγο και δοκίμασε ξανά.",
@@ -1177,6 +1212,41 @@ const el: Record<TKey, string> = {
 
   "err.editWindow": "Ένα μήνυμα αλλάζει μόνο μέσα σε 15 λεπτά από την αποστολή.",
   "err.pinLimit": "Μπορείς να καρφιτσώσεις έως 3 συνομιλίες.",
+
+  // --- safety ---
+  "report.titleMessage": "Αναφορά μηνύματος",
+  "report.titleGroup": "Αναφορά ομάδας: {name}",
+  "report.textGroup": "Πες μας με δυο λόγια τι έγινε. Κανείς στην ομάδα δεν ειδοποιείται.",
+  "report.group": "Αναφορά ομάδας",
+  "report.shareMessage": "Να σταλεί και το κείμενο αυτού του μηνύματος στους συντονιστές",
+  "report.shareRecent": "Να σταλούν και τα τελευταία {n} μηνύματα της συνομιλίας στους συντονιστές",
+  "report.shareHint":
+    "Τα μηνύματα κρυπτογραφούνται από άκρη σε άκρη, οπότε οι συντονιστές δεν μπορούν να τα διαβάσουν. Βλέπουν μόνο το κείμενο που θα επιλέξεις να στείλεις εδώ.",
+  "report.nothingToShare":
+    "Τα μηνύματα κρυπτογραφούνται από άκρη σε άκρη, οπότε οι συντονιστές δεν μπορούν να τα διαβάσουν. Θα δουν ποιον ανέφερες και πότε.",
+  "report.preview": "Αυτό ακριβώς θα σταλεί:",
+  "report.attachment": "[αρχείο: {name}]",
+  "report.voice": "[φωνητικό μήνυμα]",
+  "report.errTarget": "Αυτό δεν μπορεί πια να αναφερθεί.",
+  "report.errSelf": "Δεν μπορείς να κάνεις αναφορά για τον εαυτό σου.",
+  "report.errReason": "Γράψε με λίγα λόγια τι έγινε (έως 500 χαρακτήρες).",
+  "report.errLimit": "Έστειλες πολλές αναφορές σήμερα. Δοκίμασε ξανά αύριο.",
+  "err.suspended": "Ο λογαριασμός σου είναι σε αναστολή.",
+  "err.nameReserved": "Αυτό το όνομα είναι δεσμευμένο. Διάλεξε κάποιο άλλο.",
+  "err.nameLength": "Το όνομα θέλει από 2 έως 60 χαρακτήρες.",
+  "err.enterPassword": "Γράψε τον κωδικό σου.",
+  "suspended.title": "Ο λογαριασμός σου έχει ανασταλεί",
+  "suspended.text":
+    "Από τις {date} δεν μπορείς να στέλνεις μηνύματα, να καλείς ή να βρίσκεις ανθρώπους στο Mila. Τα δεδομένα σου δεν έχουν σβηστεί.",
+  "suspended.reason": "Η αιτία, όπως τη γράφουν οι συντονιστές:",
+  "suspended.noReason": "Οι συντονιστές δεν πρόσθεσαν σημείωση.",
+  "suspended.contestBefore": "Αν πιστεύεις ότι έγινε λάθος, γράψε μας στη διεύθυνση που θα βρεις στην",
+  "suspended.contestLink": "πολιτική απορρήτου",
+  "suspended.contestAfter": ". Θα το ξανακοιτάξουμε.",
+  "suspended.stillCan": "Μπορείς ακόμα να κατεβάσεις τα δεδομένα σου ή να διαγράψεις τον λογαριασμό σου.",
+  "account.signOutEverywhere": "Αποσύνδεση από όλες τις συσκευές",
+  "account.signOutEverywhereText":
+    "Αποσυνδέεται κάθε κινητό και υπολογιστής που έχει μπει στον λογαριασμό σου, και αυτή η συσκευή. Χρήσιμο αν έχασες μια συσκευή ή μπήκες κάπου που δεν εμπιστεύεσαι.",
 };
 
 const dictionaries: Record<Lang, Record<TKey, string>> = { en, el };
@@ -1193,6 +1263,14 @@ export function t(key: TKey, params?: Record<string, string | number>): string {
 // συναντά ένας κανονικός χρήστης μεταφράζονται εδώ· τα υπόλοιπα (σπάνια,
 // τεχνικά) περνάνε όπως είναι, για να μπορεί να μας τα πει.
 const KNOWN_ERRORS: Array<[RegExp, TKey]> = [
+  // --- safety --- (πριν από τα γενικά «rate limit» και «not authenticated»)
+  [/account suspended/i, "err.suspended"],
+  [/this name is reserved/i, "err.nameReserved"],
+  [/display name must be/i, "err.nameLength"],
+  [/nothing to report/i, "report.errTarget"],
+  [/cannot report yourself/i, "report.errSelf"],
+  [/report reason must be|report excerpt is too long/i, "report.errReason"],
+  [/rate limit exceeded: report/i, "report.errLimit"],
   [/invalid login credentials/i, "err.invalidLogin"],
   [/email not confirmed/i, "err.emailNotConfirmed"],
   [/already registered|already been registered/i, "err.alreadyRegistered"],

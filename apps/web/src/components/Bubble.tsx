@@ -11,6 +11,7 @@ import {
   CornerUpLeft,
   Download,
   FileText,
+  Flag,
   Forward,
   LockKeyhole,
   Pencil,
@@ -101,6 +102,7 @@ export function Bubble({
   onDelete,
   onEdit,
   onForward,
+  onReport,
   onQuoteClick,
   onMediaLoad,
   onOpenMedia,
@@ -124,6 +126,8 @@ export function Bubble({
   onDelete: () => void;
   onEdit: () => void;
   onForward: () => void;
+  /** Αναφορά για αυτό το μήνυμα (μόνο για μηνύματα άλλων). */
+  onReport?: () => void;
   onQuoteClick: (messageId: string) => void;
   onMediaLoad: () => void;
   onOpenMedia: () => void;
@@ -332,6 +336,11 @@ export function Bubble({
             {canReply && editable(m, meId) && !isAudio && (
               <button onClick={onEdit}>
                 <Pencil /> {t("msg.edit")}
+              </button>
+            )}
+            {!own && !m.deleted && onReport && (
+              <button className="danger" onClick={onReport}>
+                <Flag /> {t("chat.report")}
               </button>
             )}
             <button className="danger" onClick={onDelete}>

@@ -104,6 +104,7 @@ const TEXT = GREEK
       missedVideo: "Αναπάντητη βιντεοκλήση",
       answer: "Απάντηση",
       decline: "Απόρριψη",
+      report: "Νέα αναφορά",
     }
   : {
       fallback: "New message",
@@ -115,6 +116,7 @@ const TEXT = GREEK
       missedVideo: "Missed video call",
       answer: "Answer",
       decline: "Decline",
+      report: "New report",
     };
 
 /** Εισερχόμενη / αναπάντητη κλήση. Ίδιο tag ανά κλήση, ώστε το «αναπάντητη»
@@ -160,6 +162,22 @@ self.addEventListener("push", (event) => {
 
   event.waitUntil(
     (async () => {
+      // { type: "report" }: νέα αναφορά, μόνο στους συντονιστές (0014). Δεν
+      // λέει ποιος ή τι: οι λεπτομέρειες είναι στον SQL editor (δες
+      // docs/MODERATION.md). Φαίνεται και με ανοιχτό το app, αφού μέσα στο app
+      // δεν υπάρχει άλλη ένδειξη.
+      if (data.type === "report") {
+        await self.registration.showNotification("Mila", {
+          body: TEXT.report,
+          icon: "/icons/icon-192.png",
+          badge: "/icons/icon-192.png",
+          tag: "mila-report",
+          renotify: true,
+          data: { kind: "report" },
+        });
+        return;
+      }
+
       const windows = await self.clients.matchAll({
         type: "window",
         includeUncontrolled: true,

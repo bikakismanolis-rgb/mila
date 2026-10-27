@@ -189,7 +189,7 @@ export function Login({
   const updateRecoveredPassword = () =>
     attempt(async () => {
       if (!supabase) throw new Error(t("err.notConfigured"));
-      if (newPassword.length < 6) throw new Error(t("err.passwordShort"));
+      if (newPassword.length < backend.MIN_PASSWORD) throw new Error(t("err.passwordShort"));
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
       });
@@ -205,7 +205,10 @@ export function Login({
       const normalizedEmail = email.trim().toLowerCase();
       if (!supabase) throw new Error(t("err.notConfigured"));
       if (!normalizedEmail) throw new Error(t("login.enterValidEmail"));
-      if (password.length < 6) throw new Error(t("err.passwordShort"));
+      // Το όριο ισχύει για νέους κωδικούς. Όποιος έχει ήδη μικρότερο (από πριν
+      // ανέβει το όριο) συνδέεται κανονικά.
+      if (authMode === "signin" ? !password : password.length < backend.MIN_PASSWORD)
+        throw new Error(t(authMode === "signin" ? "err.enterPassword" : "err.passwordShort"));
 
       if (authMode === "signin") {
         const { data, error } = await supabase.auth.signInWithPassword({

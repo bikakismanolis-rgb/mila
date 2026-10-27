@@ -39,7 +39,7 @@ import type { Call, Chat, MediaInfo, Member, Msg, Presence, User } from "../data
 import * as calls from "../calls";
 import { t, translateError } from "../i18n";
 import { dayKey, dayLabel, lastSeenText } from "../format";
-import { ConfirmDialog, Empty, Modal, PromptDialog } from "./common";
+import { ConfirmDialog, Empty, Modal } from "./common";
 import { GroupInfoDialog } from "./Groups";
 import { Bubble, editable } from "./Bubble";
 import { Composer } from "./Composer";
@@ -47,6 +47,8 @@ import { ForwardDialog, MediaViewer, SendFilesDialog, isVisual } from "./Media";
 import type { Prepared } from "./Media";
 import { CallEntry } from "./CallsTab";
 import { clock, useActiveCallId } from "./Call";
+import { ReportDialog } from "./Report";
+import type { ReportTarget } from "./Report";
 
 const messageOf = (caught: unknown) =>
   translateError(caught instanceof Error ? caught.message : String(caught)) ||
@@ -166,8 +168,9 @@ export function Conversation({
     [pendingFiles, setPendingFiles] = useState<{ files: File[]; caption: string } | null>(null),
     [headerMenu, setHeaderMenu] = useState(false),
     [dialog, setDialog] = useState<
-      "details" | "report" | "block" | "group" | "mute" | null
+      "details" | "block" | "group" | "mute" | null
     >(null),
+    [reporting, setReporting] = useState<ReportTarget | null>(null),
     [highlight, setHighlight] = useState<string | null>(null),
     [presence, setPresence] = useState<Presence | null>(null),
     [unreadFrom, setUnreadFrom] = useState<{ id: string; count: number } | null>(null),
@@ -767,9 +770,14 @@ export function Conversation({
               <div className="click-away" onClick={() => setHeaderMenu(false)} />
               <div className="menu-popover" onClick={() => setHeaderMenu(false)}>
                 {isGroup ? (
-                  <button onClick={() => setDialog("group")}>
-                    <Users /> {t("group.info")}
-                  </button>
+                  <>
+                    <button onClick={() => setDialog("group")}>
+                      <Users /> {t("group.info")}
+                    </button>
+                    <button className="danger" onClick={() => setReporting({ kind: "group" })}>
+                      <Flag /> {t("report.group")}
+                    </button>
+                  </>
                 ) : (
                   other &&
                   !other.deleted && (
@@ -823,7 +831,7 @@ export function Conversation({
                     )}
                     <button
                       className="danger"
-                      onClick={() => setDialog("report")}
+                      onClick={() => setReporting({ kind: "person", person: other })}
                     >
                       <Flag /> {t("chat.report")}
                     </button>
@@ -941,6 +949,10 @@ export function Conversation({
                 onForward={() => {
                   setMenuFor(null);
                   setForwarding(m);
+                }}
+                onReport={() => {
+                  setMenuFor(null);
+                  setReporting({ kind: "message", message: m });
                 }}
                 onQuoteClick={(id) => void goTo(id)}
                 onMediaLoad={onMediaLoad}
@@ -1132,6 +1144,19 @@ export function Conversation({
             )}
           </div>
           <SafetyCode person={other} />
+          {!other.deleted && (
+            <div className="contact-actions">
+              <button
+                className="secondary report"
+                onClick={() => {
+                  setDialog(null);
+                  setReporting({ kind: "person", person: other });
+                }}
+              >
+                <Flag size={16} /> {t("chat.report")}
+              </button>
+            </div>
+          )}
         </Modal>
       )}
 
@@ -1149,18 +1174,15 @@ export function Conversation({
         />
       )}
 
-      {dialog === "report" && other && (
-        <PromptDialog
-          title={t("chat.reportTitle", { name: other.name })}
-          text={t("chat.reportText")}
-          placeholder={t("chat.reportPlaceholder")}
-          confirmLabel={t("chat.reportSend")}
-          multiline
-          onSubmit={async (reason) => {
-            await backend.reportUser(other.id, reason);
-            notify(t("chat.reportThanks"));
-          }}
-          close={() => setDialog(null)}
+      {reporting && (
+        <ReportDialog
+          target={reporting}
+          chat={chat}
+          me={me}
+          messages={messages}
+          nameOf={nameOf}
+          done={() => notify(t("chat.reportThanks"))}
+          close={() => setReporting(null)}
         />
       )}
 

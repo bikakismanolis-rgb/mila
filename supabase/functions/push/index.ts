@@ -13,6 +13,9 @@
 //      του 0013 και push_call_targets.
 //   5. {action:"ice"} από συνδεδεμένο χρήστη: οι servers που βοηθούν δύο
 //      συσκευές να βρεθούν (δες iceServers πιο κάτω).
+//   6. {action:"report", report_id} από το trigger του 0014: «Νέα αναφορά»
+//      στις συσκευές των συντονιστών (push_report_targets), χωρίς ονόματα και
+//      χωρίς κείμενο.
 //
 // ΧΩΡΙΣ ΧΕΙΡΟΚΙΝΗΤΑ ΜΥΣΤΙΚΑ: τα κλειδιά VAPID φτιάχνονται εδώ την πρώτη φορά και
 // φυλάσσονται στον πίνακα push_config, που τον διαβάζει μόνο το service role.
@@ -552,6 +555,21 @@ export async function handler(request: Request): Promise<Response> {
       const userId = await signedInUser(request);
       if (!userId) return json({ error: "sign in first" }, 401);
       return json(await iceServers(userId));
+    }
+
+    if (body?.action === "report" && typeof body.report_id === "string") {
+      const config = await configWithKeys();
+      const given = request.headers.get("x-mila-secret") || "";
+      if (!sameSecret(given, config.webhook_secret))
+        return json({ error: "forbidden" }, 403);
+
+      const targets = await rpc<{
+        payload: unknown;
+        subscriptions: Subscription[];
+      } | null>("push_report_targets", { p_report: body.report_id });
+      // Όλες οι αναφορές με το ίδιο topic: δέκα αναφορές όσο ήταν κλειστό το
+      // κινητό φτάνουν ως μία ειδοποίηση, όχι δέκα.
+      return json(await sendAll(targets, config, { topic: "mila-report" }));
     }
 
     return json({ error: "unknown action" }, 400);
