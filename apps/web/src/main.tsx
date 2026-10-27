@@ -1104,9 +1104,20 @@ createRoot(document.getElementById("root")!).render(
 );
 
 // Νέα έκδοση του site: η σελίδα ξαναφορτώνει μόνη της, αλλά ποτέ όσο τρέχει
-// ή χτυπάει κλήση (δες registerServiceWorker).
+// ή χτυπάει κλήση, ούτε όσο περιμένει να φύγει κάποιο μήνυμα (η ουρά είναι
+// μόνο στη μνήμη, δες outbox.ts και registerServiceWorker).
 registerServiceWorker({
-  busy: () => calls.activeCallId() !== null || calls.snapshot().incoming.length > 0,
-  watch: calls.subscribe,
+  busy: () =>
+    calls.activeCallId() !== null ||
+    calls.snapshot().incoming.length > 0 ||
+    outbox.snapshot().some((p) => p.state !== "sent"),
+  watch: (listener) => {
+    const stopCalls = calls.subscribe(listener);
+    const stopOutbox = outbox.subscribe(listener);
+    return () => {
+      stopCalls();
+      stopOutbox();
+    };
+  },
 });
 void bootstrapNative();
