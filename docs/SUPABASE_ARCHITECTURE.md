@@ -17,7 +17,7 @@ The browser talks directly to Supabase. Every write goes through a `security def
 - Postgres: profiles, devices and public keys, conversations, memberships, requests, encrypted messages, wrapped keys, receipts, reactions, blocks, reports, rate-limit counters.
 - Realtime: postgres changes for messages, receipts and memberships; Broadcast for typing.
 - Storage, private buckets:
-  - `message-media`: encrypted attachment blobs only (`application/octet-stream`, max 16 MB). Readable by conversation members through short-lived signed URLs; useless without the key inside the message.
+  - `message-media`: encrypted attachment blobs only (`application/octet-stream`, max 50 MB, migration 0016). Readable by conversation members through short-lived signed URLs; useless without the key inside the message.
   - `avatars`: a 256x256 JPEG redrawn on the device (no EXIF). Readable only by people who share an accepted conversation with the owner, and only the current photo.
 - Row Level Security: only members read message rows; only the recipient reads their wrapped keys; `profiles` is readable only by its owner, everything else goes through RPCs that apply the privacy rules.
 

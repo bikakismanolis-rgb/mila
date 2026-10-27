@@ -111,6 +111,7 @@ update public.rate_limit_rules set max_count = 50 where action = 'message' and w
 | `contact_import` / `contact_match` | 5 files, 1000 addresses a day |
 | `signup` (whole app) | 60 an hour, 500 a day |
 | `upload_media` / `upload_avatar` | 60 an hour and 300 a day / 20 a day |
+| `upload_media_mb` (total size of attachments) | 300 MB an hour, 1000 MB a day |
 | `call` | 30 an hour, 200 a day |
 | `reaction`, `report`, `group_create`, `group_add`, `device_register`, `avatar_change` | see the migration |
 
