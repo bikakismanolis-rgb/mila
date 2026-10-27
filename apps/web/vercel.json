@@ -9,7 +9,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "/((?!privacy|install|qr|og\\.png|icons|assets|sw\\.js|manifest\\.webmanifest).*)",
+      "source": "/((?!privacy|terms|legal\\.css|install|qr|og\\.png|icons|assets|sw\\.js|manifest\\.webmanifest).*)",
       "destination": "/index.html"
     }
   ],
