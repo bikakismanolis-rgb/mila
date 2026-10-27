@@ -623,3 +623,25 @@ select test.ok(current_setting('mila.erasing_account', true) is distinct from 'o
   'the deletion switch does not outlive its transaction');
 
 select set_config('request.jwt.claim.sub', '', false);
+
+-- ---------------------------------------------------------------------------
+-- 9. Πόσο μένουν οι αναφορές
+-- ---------------------------------------------------------------------------
+-- Το απόσπασμα σβήνεται 6 μήνες αφού κλείσει η αναφορά, η αναφορά 2 χρόνια μετά.
+update reports set status = 'dismissed', reviewed_at = now() - interval '7 months' where id = :'r_grp_msg';
+update reports set status = 'reviewed', reviewed_at = now() - interval '1 month' where id = :'r_msg';
+update reports set status = 'actioned', reviewed_at = now() - interval '25 months' where id = :'r_grp';
+select set_config('request.jwt.claim.sub', :hal, false);
+set role authenticated;
+select test.fails('select public.expire_old_reports()', 'permission denied', 'users cannot run the clean-up');
+select submit_report('Spam again', null, :'grp') as r_again \gset
+reset role;
+select test.ok((select excerpt is null from reports where id = :'r_grp_msg'),
+  'a new report clears the excerpt of reports closed 6 months ago');
+select test.ok((select excerpt = :excerpt from reports where id = :'r_msg'), 'not of recently closed ones');
+select test.ok(not exists (select 1 from reports where id = :'r_grp'), 'reports closed 2 years ago are gone');
+select test.ok(exists (select 1 from reports where id = :'r_again' and status = 'open'), 'open reports stay');
+update reports set reviewed_at = now() - interval '7 months' where id = :'r_msg';
+select set_config('request.jwt.claim.sub', '', false);
+select moderation_set_report_status(:'r_person', 'reviewed');
+select test.ok((select excerpt is null from reports where id = :'r_msg'), 'so does reviewing a report');

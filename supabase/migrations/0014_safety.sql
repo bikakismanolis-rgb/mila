@@ -13,7 +13,8 @@
 --  4. Αναφορές: για μήνυμα, ομάδα ή άνθρωπο, με κατάσταση (ανοιχτή, ελέγχθηκε,
 --     έγινε ενέργεια, απορρίφθηκε) και προαιρετικό απόσπασμα. Τα μηνύματα είναι
 --     κρυπτογραφημένα, άρα ο server δεν τα διαβάζει: το κείμενο το στέλνει η
---     συσκευή αυτού που κάνει την αναφορά, ΜΟΝΟ αν το επιλέξει ρητά.
+--     συσκευή αυτού που κάνει την αναφορά, ΜΟΝΟ αν το επιλέξει ρητά. Το
+--     απόσπασμα σβήνεται 6 μήνες αφού κλείσει η αναφορά, η αναφορά 2 χρόνια.
 --  5. Συντονιστές (πίνακας moderators): με κάθε νέα αναφορά παίρνουν
 --     ειδοποίηση «Νέα αναφορά», χωρίς ονόματα και χωρίς κείμενο.
 --  6. Εργαλεία για τον ιδιοκτήτη, ΜΟΝΟ από τον SQL editor: moderation_reports,
@@ -692,6 +693,26 @@ begin
 end
 $$;
 
+-- Πόσο μένουν οι αναφορές (το λέει και η πολιτική απορρήτου): το απόσπασμα
+-- (μηνύματα και ονόματα, όπως τα έστειλε η συσκευή) σβήνεται 6 μήνες αφού
+-- κλείσει η αναφορά, και η ίδια η αναφορά 2 χρόνια αφού κλείσει. Οι ανοιχτές
+-- μένουν μέχρι να τις δεις. Τρέχει μόνο του με κάθε νέα αναφορά και κάθε
+-- αλλαγή κατάστασης από τον ιδιοκτήτη, όπως το καθάρισμα του hit_rate_limit.
+create or replace function public.expire_old_reports()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update reports set excerpt = null
+  where excerpt is not null
+    and status <> 'open'
+    and reviewed_at < now() - interval '6 months';
+  delete from reports
+  where status <> 'open'
+    and reviewed_at < now() - interval '2 years';
+$$;
+
 -- Αναφορά από το app. Ένα από τα τρία:
 --   p_message       ένα μήνυμα (αναφέρεται ο αποστολέας του),
 --   p_conversation  μια ομάδα, ή μια ατομική συνομιλία (αναφέρεται ο άλλος),
@@ -784,6 +805,7 @@ begin
     raise exception 'Nothing to report' using errcode = '22023';
   end if;
 
+  perform public.expire_old_reports();
   insert into reports (reporter_id, reported_id, reason, conversation_id, message_id, excerpt)
   values (me, target_user, clean_reason, target_conversation, p_message, clean_excerpt)
   returning id into new_id;
@@ -987,6 +1009,7 @@ begin
   if not found then
     raise exception 'No report with id %', p_report using errcode = 'P0002';
   end if;
+  perform public.expire_old_reports();
   return jsonb_build_object('id', changed.id, 'status', changed.status, 'reviewed_at', changed.reviewed_at);
 end;
 $$;
@@ -1364,6 +1387,7 @@ $$;
 revoke all on function public.profiles_before_write() from public, anon, authenticated;
 revoke all on function public.refuse_suspended_writes() from public, anon, authenticated;
 revoke all on function public.reports_before_insert() from public, anon, authenticated;
+revoke all on function public.expire_old_reports() from public, anon, authenticated;
 revoke all on function public.notify_new_report() from public, anon, authenticated;
 revoke all on function public.clean_display_name(text) from public, anon, authenticated;
 revoke all on function public.name_skeleton(text) from public, anon, authenticated;
