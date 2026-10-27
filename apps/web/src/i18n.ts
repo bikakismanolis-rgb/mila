@@ -372,7 +372,7 @@ const en = {
     "Your login, password and Google connection are erased.",
   "account.deleteItem2": "Your name, photo and profile details are erased.",
   "account.deleteItem3":
-    "Messages you already sent stay in the other person's chat, shown as sent by a deleted user.",
+    "Messages you already sent, and calls you were in, stay in the other person's history, shown as from a deleted user.",
   "account.typeDeleteBefore": "Type",
   "account.typeDeleteAfter": "to confirm",
   "account.keep": "Keep my account",
@@ -1006,7 +1006,7 @@ const el: Record<TKey, string> = {
     "Σβήνονται η σύνδεση, ο κωδικός και η σύνδεσή σου με Google.",
   "account.deleteItem2": "Σβήνονται το όνομα, η φωτογραφία και τα στοιχεία του προφίλ σου.",
   "account.deleteItem3":
-    "Τα μηνύματα που έχεις ήδη στείλει μένουν στη συνομιλία του άλλου, ως μηνύματα διαγραμμένου χρήστη.",
+    "Τα μηνύματα που έχεις ήδη στείλει και οι κλήσεις στις οποίες ήσουν μένουν στο ιστορικό του άλλου, ως διαγραμμένου χρήστη.",
   "account.typeDeleteBefore": "Γράψε",
   "account.typeDeleteAfter": "για επιβεβαίωση",
   "account.keep": "Κρατάω τον λογαριασμό",
