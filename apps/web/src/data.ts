@@ -234,7 +234,7 @@ function sendError(message: string, retry: boolean, unsure = false): SendError {
 
 /** Ό,τι ξέρουμε ότι δεν θα περάσει όσες φορές κι αν ξαναδοκιμάσει. */
 const HOPELESS =
-  /cannot send messages to this conversation|message is too long|attachment does not belong|must be encrypted|not authenticated/i;
+  /cannot send messages to this conversation|message is too long|attachment does not belong|must be encrypted|not authenticated|account suspended/i;
 
 async function currentUserId(): Promise<string> {
   const { data } = await db().auth.getUser();
@@ -1228,6 +1228,7 @@ export async function sendMessage(
   // κανείς. Το μαζεύουμε — εκτός αν μπορεί να γράφτηκε, ή αν το κρατάει ο καλών.
   if (file && !unsure && !options.keepFile) void removeFiles([file.path]);
   if (/unknown sending device/i.test(lastError?.message || "")) deviceFor = null;
+  checkAccountOn(lastError);
   throw sendError(
     translateError(lastError?.message) || t("err.send"),
     !HOPELESS.test(lastError?.message || ""),
