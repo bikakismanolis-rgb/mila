@@ -90,4 +90,18 @@ const s2 = await e.safetyCode({ userId: "bob", keys: [B.publicKey] }, { userId: 
 assert.deepEqual(s1, s2); assert.equal(s1.length, 12); assert.ok(s1.every(g => /^\d{5}$/.test(g)));
 const s3 = await e.safetyCode({ userId: "alice", keys: [A.publicKey, E.publicKey] }, { userId: "bob", keys: [B.publicKey] });
 assert.notDeepEqual(s1, s3, "new device changes the code");
+// Κλήσεις: η «χειραψία» ανοίγει μόνο στην άλλη συσκευή, μόνο με το ίδιο aad,
+// και ένα κλειδί κλήσης δεν ανοίγει μηνύματα (και αντίστροφα).
+const aad = "mila/v1/call|call-1|dev-a|sid-a|dev-b|sid-b|1";
+const offer = { t: "description", d: { type: "offer", sdp: "v=0 fingerprint:sha-256 AA:BB" } };
+const sealed = await e.sealSignal(A, B.publicKey, aad, offer);
+assert.ok(!sealed.includes("fingerprint"), "no SDP in the clear");
+assert.deepEqual(await e.openSignal(B, A.publicKey, aad, sealed), offer, "the other device opens it");
+assert.equal(await e.openSignal(E, A.publicKey, aad, sealed), null, "a third device cannot");
+assert.equal(await e.openSignal(B, E.publicKey, aad, sealed), null, "claiming another sender fails");
+assert.equal(await e.openSignal(B, A.publicKey, aad.replace("|1", "|2"), sealed), null, "replay with another number fails");
+assert.equal(await e.openSignal(B, A.publicKey, aad.replace("call-1", "call-2"), sealed), null, "moved to another call fails");
+const flipped = sealed.slice(0, -3) + (sealed.endsWith("AAA") ? "AAB" : "AAA");
+assert.equal(await e.openSignal(B, A.publicKey, aad, flipped), null, "tampered signal fails");
+
 console.log("e2ee OK");

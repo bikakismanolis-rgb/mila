@@ -1,53 +1,52 @@
-// Η ανοιχτή συνομιλία: κεφαλίδα, μηνύματα (σελίδα-σελίδα, με διαχωριστές
-// ημέρας), ενέργειες ανά μήνυμα (απάντηση, αντίδραση, αντιγραφή, διαγραφή),
-// και το πεδίο γραψίματος.
+// Η ανοιχτή συνομιλία: κεφαλίδα (με κλήσεις και «σε σύνδεση»), μηνύματα και
+// κλήσεις στη σειρά τους (σελίδα-σελίδα, με διαχωριστές ημέρας και «αδιάβαστα»),
+// ενέργειες ανά μήνυμα, και το πεδίο γραψίματος (Composer.tsx).
 
 import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import {
+  Archive,
+  ArchiveRestore,
+  ArrowDown,
   ArrowLeft,
   Ban,
-  Check,
-  CheckCheck,
+  Bell,
+  BellOff,
   Clock,
-  Copy,
-  CornerUpLeft,
-  FileText,
-  Download,
   Flag,
   LockKeyhole,
   MoreVertical,
-  Paperclip,
+  Phone,
+  Pin,
+  PinOff,
   Send,
   ShieldCheck,
   Trash2,
+  Upload,
   UserRound,
   Users,
-  X,
+  Video,
 } from "lucide-react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import * as backend from "../data";
-import type { Chat, Member, Msg, User } from "../data";
+import type { Call, Chat, MediaInfo, Member, Msg, Presence, User } from "../data";
+import * as calls from "../calls";
 import { t, translateError } from "../i18n";
-import { dayKey, dayLabel, fileSize, time } from "../format";
+import { dayKey, dayLabel, lastSeenText } from "../format";
 import { ConfirmDialog, Empty, Modal, PromptDialog } from "./common";
 import { GroupInfoDialog } from "./Groups";
-
-// Γραμμένα ως κωδικοί και όχι ως χαρακτήρες: το αρχείο έχει ήδη πάθει μία φορά
-// ζημιά σε emoji όταν αποθηκεύτηκε με λάθος κωδικοποίηση στα Windows.
-const REACTIONS = [
-  "\u{1F44D}", // μπράβο
-  "\u2764\uFE0F", // καρδιά
-  "\u{1F602}", // γέλιο
-  "\u{1F62E}", // έκπληξη
-  "\u{1F622}", // λύπη
-  "\u{1F64F}", // ευχαριστώ
-];
+import { Bubble, editable } from "./Bubble";
+import { Composer } from "./Composer";
+import { ForwardDialog, MediaViewer, SendFilesDialog, isVisual } from "./Media";
+import type { Prepared } from "./Media";
+import { CallEntry } from "./CallsTab";
+import { clock, useActiveCallId } from "./Call";
 
 const messageOf = (caught: unknown) =>
   translateError(caught instanceof Error ? caught.message : String(caught)) ||
@@ -83,20 +82,48 @@ export function messageSnippet(m: {
   deleted?: boolean;
   undecryptable?: boolean;
   pendingKey?: boolean;
-  attachment?: { name: string } | null;
+  attachment?: { name: string; mime?: string; voice?: boolean; duration?: number } | null;
   attachmentName?: string | null;
 }): string {
   if (m.deleted) return t("msg.deleted");
   if (m.undecryptable)
     return `\u{1F512} ${t(m.pendingKey ? "msg.pendingKey" : "msg.undecryptable")}`;
+  const a = m.attachment;
+  if (a?.voice)
+    return `\u{1F3A4} ${t("msg.voice")}${a.duration ? ` (${clock(a.duration)})` : ""}`;
+  if (a?.mime?.startsWith("image/")) return `\u{1F4F7} ${m.body || t("msg.photo")}`;
+  if (a?.mime?.startsWith("video/")) return `\u{1F3A5} ${m.body || t("msg.video")}`;
+  if (a?.mime?.startsWith("audio/")) return `\u{1F3B5} ${m.body || a.name}`;
   if (m.body) return m.body;
-  const file = m.attachment?.name || m.attachmentName;
+  const file = a?.name || m.attachmentName;
   return file ? `\u{1F4CE} ${file}` : "";
 }
+
+/** Μπορούν να γίνουν κλήσεις εδώ; Μόνο σε αποδεκτή συνομιλία, όχι με
+ *  αποκλεισμένο ή διαγραμμένο λογαριασμό. Το ίδιο ελέγχει και η βάση. */
+export function canCall(chat: Chat): boolean {
+  return (
+    calls.callsSupported &&
+    chat.requestStatus === "accepted" &&
+    !chat.blockedByMe &&
+    !(chat.type === "direct" && (chat.others[0]?.deleted || !chat.others[0]))
+  );
+}
+
+type Item =
+  | { kind: "msg"; at: string; m: Msg }
+  | { kind: "call"; at: string; call: Call };
+
+const MUTE_OPTIONS: Array<{ key: "8h" | "week" | "always"; ms: number | null }> = [
+  { key: "8h", ms: 8 * 3600_000 },
+  { key: "week", ms: 7 * 86400_000 },
+  { key: "always", ms: null },
+];
 
 export function Conversation({
   me,
   chat,
+  chats,
   contacts,
   jumpTo,
   onJumped,
@@ -108,6 +135,8 @@ export function Conversation({
 }: {
   me: User;
   chat: Chat;
+  /** Όλες οι συνομιλίες, για την προώθηση. */
+  chats: Chat[];
   /** Άνθρωποι που μπορώ να βάλω σε ομάδα (αποδεκτές ατομικές συνομιλίες). */
   contacts: User[];
   /** Μήνυμα στο οποίο πρέπει να πάει η οθόνη (από την αναζήτηση). */
@@ -122,24 +151,30 @@ export function Conversation({
   notify: (message: string) => void;
 }) {
   const [messages, setMessages] = useState<Msg[]>([]),
+    [callLog, setCallLog] = useState<Call[]>([]),
     [hasMore, setHasMore] = useState(false),
     [loaded, setLoaded] = useState(false),
     [loadingOlder, setLoadingOlder] = useState(false),
-    [typingName, setTypingName] = useState<string | null>(null),
-    [text, setText] = useState(""),
+    [typing, setTyping] = useState<{ name: string; activity: backend.Activity } | null>(null),
     [replyTo, setReplyTo] = useState<Msg | null>(null),
-    [uploading, setUploading] = useState(false),
+    [editing, setEditing] = useState<Msg | null>(null),
+    [busy, setBusy] = useState(""),
     [menuFor, setMenuFor] = useState<string | null>(null),
     [deleting, setDeleting] = useState<Msg | null>(null),
+    [forwarding, setForwarding] = useState<Msg | null>(null),
+    [viewing, setViewing] = useState<string | null>(null),
+    [pendingFiles, setPendingFiles] = useState<{ files: File[]; caption: string } | null>(null),
     [headerMenu, setHeaderMenu] = useState(false),
     [dialog, setDialog] = useState<
-      "details" | "report" | "block" | "group" | null
+      "details" | "report" | "block" | "group" | "mute" | null
     >(null),
-    [highlight, setHighlight] = useState<string | null>(null);
+    [highlight, setHighlight] = useState<string | null>(null),
+    [presence, setPresence] = useState<Presence | null>(null),
+    [unreadFrom, setUnreadFrom] = useState<{ id: string; count: number } | null>(null),
+    [showDown, setShowDown] = useState(false),
+    [dragging, setDragging] = useState(false);
 
   const scroller = useRef<HTMLDivElement>(null),
-    fileInput = useRef<HTMLInputElement>(null),
-    composer = useRef<HTMLTextAreaElement>(null),
     typingChannel = useRef<RealtimeChannel | null>(null),
     typingTimer = useRef<number | undefined>(undefined),
     // Ποια συνομιλία δείχνει ΤΩΡΑ η οθόνη. Οι απαντήσεις της βάσης αργούν· αν
@@ -147,16 +182,20 @@ export function Conversation({
     showing = useRef(chat.id),
     nearBottom = useRef(true),
     // Τι να κάνει το scroll μετά το επόμενο render.
-    scrollPlan = useRef<"bottom" | "keep" | "none">("bottom"),
+    scrollPlan = useRef<"bottom" | "keep" | "unread" | "none">("bottom"),
     distanceFromBottom = useRef(0),
     messagesRef = useRef<Msg[]>([]),
     hasMoreRef = useRef(false),
     // Το τελευταίο εισερχόμενο μήνυμα που έχω ήδη σημάνει ως διαβασμένο.
-    lastMarked = useRef<string | null>(null);
+    lastMarked = useRef<string | null>(null),
+    // Πόσα αδιάβαστα είχε η συνομιλία τη στιγμή που άνοιξε.
+    unreadAtOpen = useRef(chat.unread),
+    dragDepth = useRef(0);
 
   messagesRef.current = messages;
   hasMoreRef.current = hasMore;
 
+  const activeCallId = useActiveCallId();
   const isGroup = chat.type === "group";
   const other: Member | undefined = isGroup ? undefined : chat.others[0];
   const title = chatTitle(chat);
@@ -173,6 +212,20 @@ export function Conversation({
   // -------------------------------------------------------------------------
   // Φόρτωμα και ζωντανή ενημέρωση
   // -------------------------------------------------------------------------
+
+  const loadCalls = useCallback(async () => {
+    const id = chat.id;
+    const oldest = messagesRef.current[0];
+    try {
+      const list = await backend.listCalls(
+        id,
+        hasMoreRef.current && oldest ? oldest.createdAt : undefined,
+      );
+      if (showing.current === id) setCallLog(list);
+    } catch {
+      // Το ιστορικό κλήσεων είναι συμπλήρωμα· τα μηνύματα φαίνονται κανονικά.
+    }
+  }, [chat.id]);
 
   const refreshLatest = useCallback(
     async (forceBottom = false) => {
@@ -232,15 +285,20 @@ export function Conversation({
     lastMarked.current = null;
     nearBottom.current = true;
     scrollPlan.current = "bottom";
+    unreadAtOpen.current = chat.unread;
     setMessages([]);
+    setCallLog([]);
     setHasMore(false);
     setLoaded(false);
-    setTypingName(null);
+    setTyping(null);
     setReplyTo(null);
+    setEditing(null);
     setMenuFor(null);
     setHeaderMenu(false);
     setDialog(null);
-    setText("");
+    setUnreadFrom(null);
+    setShowDown(false);
+    setPresence(chat.type === "direct" ? chat.others[0]?.presence ?? null : null);
 
     backend
       .listMessages(id)
@@ -250,9 +308,22 @@ export function Conversation({
         lastMarked.current =
           [...page.messages].reverse().find((m) => m.senderId !== me.id)?.id ||
           null;
+        // «Ν αδιάβαστα μηνύματα»: η γραμμή μπαίνει πριν από το πρώτο από αυτά.
+        const unread = unreadAtOpen.current;
+        if (unread > 0) {
+          const incoming = page.messages.filter((m) => m.senderId !== me.id && !m.deleted);
+          const first = incoming[Math.max(0, incoming.length - unread)];
+          if (first) {
+            setUnreadFrom({ id: first.id, count: Math.min(unread, incoming.length) });
+            if (unread > 3) scrollPlan.current = "unread";
+          }
+        }
+        messagesRef.current = page.messages;
+        hasMoreRef.current = page.hasMore;
         setMessages(page.messages);
         setHasMore(page.hasMore);
         setLoaded(true);
+        void loadCalls();
       })
       .catch((caught) => {
         if (showing.current === id) {
@@ -266,15 +337,15 @@ export function Conversation({
       onRefresh: () => void refreshLatest(),
       onMessageChanged: (messageId) => void patchMessage(messageId),
     });
-    typingChannel.current = backend.subscribeToTyping(id, (active, userId) => {
+    typingChannel.current = backend.subscribeToTyping(id, (activeNow, userId, activity) => {
       window.clearTimeout(typingTimer.current);
-      if (!active) {
-        setTypingName(null);
+      if (!activeNow) {
+        setTyping(null);
         return;
       }
-      setTypingName(nameOf(userId));
-      // Αν το «σταμάτησε να γράφει» χαθεί στον δρόμο, να μη μείνει για πάντα.
-      typingTimer.current = window.setTimeout(() => setTypingName(null), 6000);
+      setTyping({ name: nameOf(userId), activity });
+      // Αν το «σταμάτησε» χαθεί στον δρόμο, να μη μείνει για πάντα.
+      typingTimer.current = window.setTimeout(() => setTyping(null), 6000);
     });
 
     // Γύρισε στο app μετά από ώρα: φέρε ό,τι έχασε και σήμανέ τα διαβασμένα.
@@ -299,6 +370,31 @@ export function Conversation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.id]);
 
+  // Οι κλήσεις της συνομιλίας: ξαναφορτώνονται όταν αλλάξει η τελευταία
+  // (νέα κλήση, απαντήθηκε, έκλεισε).
+  const lastCallStamp = chat.lastCall
+    ? `${chat.lastCall.id}|${chat.lastCall.status}|${chat.lastCall.participants.map((p) => p.state).join()}`
+    : "";
+  useEffect(() => {
+    if (loaded && lastCallStamp) void loadCalls();
+  }, [lastCallStamp, loaded, loadCalls]);
+
+  // «Σε σύνδεση» / «τελευταία φορά»: από τη λίστα, και ανανέωση κάθε 30''.
+  useEffect(() => {
+    if (!other || other.deleted) return;
+    let alive = true;
+    const poll = () =>
+      void backend.getPresence(other.id).then((p) => alive && setPresence(p));
+    const timer = window.setInterval(poll, 30_000);
+    const onVisible = () => document.visibilityState === "visible" && poll();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [other?.id, other?.deleted]);
+
   // Το scroll αποφασίζεται ΠΡΙΝ ζωγραφιστεί η οθόνη, για να μην «πηδάει».
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -306,13 +402,20 @@ export function Conversation({
     if (scrollPlan.current === "keep")
       el.scrollTop = el.scrollHeight - distanceFromBottom.current;
     else if (scrollPlan.current === "bottom") el.scrollTop = el.scrollHeight;
+    else if (scrollPlan.current === "unread") {
+      // Άνοιγμα με αδιάβαστα: η οθόνη πάει στη γραμμή «αδιάβαστα», όχι στο τέλος.
+      const divider = el.querySelector<HTMLElement>(".unread-divider");
+      el.scrollTop = divider ? Math.max(0, divider.offsetTop - 90) : el.scrollHeight;
+      nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
+    }
     scrollPlan.current = "none";
-  }, [messages, typingName]);
+  }, [messages, typing, callLog]);
 
   function onScroll() {
     const el = scroller.current;
     if (!el) return;
     nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
+    setShowDown(el.scrollHeight - el.scrollTop - el.clientHeight > 400);
   }
 
   /** Οι εικόνες παίρνουν ύψος αφού φορτώσουν· αν ήμασταν κάτω, μένουμε κάτω. */
@@ -336,6 +439,7 @@ export function Conversation({
       messagesRef.current = mergeMessages(messagesRef.current, page.messages);
       setMessages(messagesRef.current);
       setHasMore(page.hasMore);
+      void loadCalls();
       return page.messages.length > 0;
     } catch (caught) {
       notify(messageOf(caught));
@@ -383,43 +487,73 @@ export function Conversation({
   // Ενέργειες
   // -------------------------------------------------------------------------
 
-  async function send() {
-    const body = text.trim();
-    if (!body) return;
-    const reply = replyTo;
-    setText("");
-    setReplyTo(null);
-    backend.sendTyping(typingChannel.current, false, me.id);
+  async function send(body: string, reply: Msg | null): Promise<boolean> {
     try {
       await backend.sendMessage(chat.id, body, { replyTo: reply?.id });
+      setUnreadFrom(null);
       await refreshLatest(true);
       onChanged();
+      return true;
     } catch (caught) {
       // Να μη χαθεί αυτό που έγραψε.
-      setText(body);
       setReplyTo(reply);
       notify(messageOf(caught));
+      return false;
     }
   }
 
-  async function sendAttachment(file?: File) {
-    if (!file) return;
-    const reply = replyTo;
-    setUploading(true);
+  async function saveEdit(message: Msg, body: string): Promise<boolean> {
     try {
-      const attachment = await backend.uploadAttachment(file, chat.id);
-      await backend.sendMessage(chat.id, "", {
-        attachment,
-        replyTo: reply?.id,
-      });
+      await backend.editMessage(message, body);
+      await patchMessage(message.id);
+      onChanged();
+      return true;
+    } catch (caught) {
+      notify(messageOf(caught));
+      return false;
+    }
+  }
+
+  /** Ένα-ένα, με τη λεζάντα στο πρώτο. Αν σπάσει κάποιο, τα υπόλοιπα συνεχίζουν. */
+  async function sendFiles(items: Prepared[], caption: string) {
+    setPendingFiles(null);
+    const reply = replyTo;
+    setReplyTo(null);
+    let failed = 0;
+    for (let i = 0; i < items.length; i++) {
+      setBusy(
+        items.length > 1
+          ? t("chat.sendingN", { i: i + 1, n: items.length })
+          : t("chat.uploading"),
+      );
+      try {
+        const attachment = await backend.uploadAttachment(items[i].file, chat.id, items[i].info);
+        await backend.sendMessage(chat.id, i === 0 ? caption : "", {
+          attachment,
+          replyTo: i === 0 ? reply?.id : undefined,
+        });
+        await refreshLatest(true);
+      } catch (caught) {
+        failed++;
+        notify(messageOf(caught));
+      }
+    }
+    setBusy("");
+    if (failed < items.length) onChanged();
+  }
+
+  async function sendVoice(file: File, info: MediaInfo) {
+    setBusy(t("chat.uploading"));
+    try {
+      const attachment = await backend.uploadAttachment(file, chat.id, info);
+      await backend.sendMessage(chat.id, "", { attachment, replyTo: replyTo?.id });
       setReplyTo(null);
       await refreshLatest(true);
       onChanged();
     } catch (caught) {
       notify(messageOf(caught));
     } finally {
-      setUploading(false);
-      if (fileInput.current) fileInput.current.value = "";
+      setBusy("");
     }
   }
 
@@ -437,6 +571,7 @@ export function Conversation({
     setMenuFor(null);
     try {
       await navigator.clipboard.writeText(message.body);
+      notify(t("msg.copied"));
     } catch {
       notify(t("msg.copyFailed"));
     }
@@ -471,6 +606,25 @@ export function Conversation({
     }
   }
 
+  async function prefs(change: Parameters<typeof backend.setChatPrefs>[1], done?: string) {
+    try {
+      await backend.setChatPrefs(chat.id, change);
+      if (done) notify(done);
+      onChanged();
+    } catch (caught) {
+      notify(messageOf(caught));
+    }
+  }
+
+  function call(video: boolean) {
+    calls.placeCall(chat, video).catch((caught) => notify(messageOf(caught)));
+  }
+
+  function openFiles(files: File[], caption = "") {
+    if (!files.length) return;
+    setPendingFiles({ files, caption });
+  }
+
   // -------------------------------------------------------------------------
   // Οθόνη
   // -------------------------------------------------------------------------
@@ -483,21 +637,73 @@ export function Conversation({
     chat.requestStatus === "rejected" ||
     Boolean(chat.blockedByMe) ||
     Boolean(other?.deleted);
+  const callable = canCall(chat);
+  const ongoing =
+    chat.lastCall && chat.lastCall.status !== "ended" ? chat.lastCall : null;
+  const inThisCall = Boolean(ongoing && activeCallId === ongoing.id);
+  const muted = Boolean(chat.mutedUntil && Date.parse(chat.mutedUntil) > Date.now());
 
-  const subtitle = typingName
-    ? isGroup
-      ? t("chat.typingNamed", { name: typingName })
-      : t("chat.typing")
+  const subtitle = typing
+    ? typing.activity === "recording"
+      ? isGroup
+        ? t("chat.recordingNamed", { name: typing.name })
+        : t("chat.recording")
+      : isGroup
+        ? t("chat.typingNamed", { name: typing.name })
+        : t("chat.typing")
     : isGroup
       ? chat.others.length + 1 === 1
         ? t("group.membersOne")
         : t("group.membersMany", { n: chat.others.length + 1 })
       : other && !other.deleted
-        ? backend.handleOf(other)
+        ? presence?.online
+          ? t("presence.online")
+          : presence?.lastSeen
+            ? lastSeenText(presence.lastSeen)
+            : backend.handleOf(other)
         : "";
 
+  // Μηνύματα και κλήσεις σε μία σειρά. Κλήσεις πριν από το παλαιότερο μήνυμα
+  // που έχει φορτώσει δεν φαίνονται ακόμα (θα έρθουν με τις παλαιότερες σελίδες).
+  const items = useMemo<Item[]>(() => {
+    const oldest = messages[0];
+    const list: Item[] = messages.map((m) => ({ kind: "msg", at: m.createdAt, m }));
+    for (const c of callLog)
+      if (!hasMore || !oldest || c.createdAt >= oldest.createdAt)
+        list.push({ kind: "call", at: c.createdAt, call: c });
+    return list.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  }, [messages, callLog, hasMore]);
+
+  const media = useMemo(
+    () => messages.filter((m) => !m.deleted && !m.undecryptable && isVisual(m.attachment?.mime)),
+    [messages],
+  );
+  const lastMine = [...messages].reverse().find((m) => m.senderId === me.id);
+
   return (
-    <>
+    <div
+      className="conversation-inner"
+      onDragEnter={(e) => {
+        if (composerHidden || !e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        dragDepth.current++;
+        setDragging(true);
+      }}
+      onDragOver={(e) => {
+        if (dragging) e.preventDefault();
+      }}
+      onDragLeave={() => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (!dragDepth.current) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!dragging) return;
+        e.preventDefault();
+        dragDepth.current = 0;
+        setDragging(false);
+        openFiles([...e.dataTransfer.files]);
+      }}
+    >
       <header>
         <button
           className="icon back"
@@ -508,13 +714,46 @@ export function Conversation({
         </button>
         <img src={chatAvatar(chat)} alt="" />
         <div
-          className={isGroup ? "clickable" : ""}
-          onClick={isGroup ? () => setDialog("group") : undefined}
+          className="clickable header-title"
+          onClick={() => setDialog(isGroup ? "group" : other && !other.deleted ? "details" : null)}
         >
-          <b>{title}</b>
-          <small>{subtitle}</small>
+          <b>
+            {title}
+            {muted && <BellOff size={13} className="muted-icon" aria-label={t("chat.muted")} />}
+          </b>
+          <small className={typing ? "typing-text" : presence?.online ? "online-text" : ""}>
+            {subtitle}
+          </small>
         </div>
         <span />
+        {ongoing && !inThisCall && callable ? (
+          <button className="join-call" onClick={() => void calls.joinOngoing(ongoing)}>
+            {ongoing.video ? <Video size={16} /> : <Phone size={16} />} {t("calls.join")}
+          </button>
+        ) : (
+          callable && (
+            <>
+              <button
+                className="icon header-call"
+                onClick={() => call(true)}
+                aria-label={t("chat.videoCall")}
+                title={t("chat.videoCall")}
+                disabled={activeCallId !== null}
+              >
+                <Video />
+              </button>
+              <button
+                className="icon header-call"
+                onClick={() => call(false)}
+                aria-label={t("chat.voiceCall")}
+                title={t("chat.voiceCall")}
+                disabled={activeCallId !== null}
+              >
+                <Phone />
+              </button>
+            </>
+          )
+        )}
         <div className="conversation-menu">
           <button
             className="icon"
@@ -534,27 +773,61 @@ export function Conversation({
                 ) : (
                   other &&
                   !other.deleted && (
-                    <>
-                      <button onClick={() => setDialog("details")}>
-                        <UserRound /> {t("chat.details")}
-                      </button>
-                      {chat.blockedByMe ? (
-                        <button onClick={() => void unblock()}>
-                          <Ban /> {t("chat.unblock")}
-                        </button>
-                      ) : (
-                        <button onClick={() => setDialog("block")}>
-                          <Ban /> {t("chat.block")}
-                        </button>
-                      )}
-                      <button
-                        className="danger"
-                        onClick={() => setDialog("report")}
-                      >
-                        <Flag /> {t("chat.report")}
-                      </button>
-                    </>
+                    <button onClick={() => setDialog("details")}>
+                      <UserRound /> {t("chat.details")}
+                    </button>
                   )
+                )}
+                {muted ? (
+                  <button onClick={() => void prefs({ mutedUntil: null }, t("chat.unmuted"))}>
+                    <Bell /> {t("chat.unmute")}
+                  </button>
+                ) : (
+                  <button onClick={() => setDialog("mute")}>
+                    <BellOff /> {t("chat.mute")}
+                  </button>
+                )}
+                {chat.pinnedAt ? (
+                  <button onClick={() => void prefs({ pinned: false })}>
+                    <PinOff /> {t("chat.unpin")}
+                  </button>
+                ) : (
+                  <button onClick={() => void prefs({ pinned: true })}>
+                    <Pin /> {t("chat.pin")}
+                  </button>
+                )}
+                {chat.archived ? (
+                  <button onClick={() => void prefs({ archived: false }, t("chat.unarchived"))}>
+                    <ArchiveRestore /> {t("chat.unarchive")}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      void prefs({ archived: true }, t("chat.archived"));
+                      onBack();
+                    }}
+                  >
+                    <Archive /> {t("chat.archive")}
+                  </button>
+                )}
+                {!isGroup && other && !other.deleted && (
+                  <>
+                    {chat.blockedByMe ? (
+                      <button onClick={() => void unblock()}>
+                        <Ban /> {t("chat.unblock")}
+                      </button>
+                    ) : (
+                      <button onClick={() => setDialog("block")}>
+                        <Ban /> {t("chat.block")}
+                      </button>
+                    )}
+                    <button
+                      className="danger"
+                      onClick={() => setDialog("report")}
+                    >
+                      <Flag /> {t("chat.report")}
+                    </button>
+                  </>
                 )}
               </div>
             </>
@@ -595,7 +868,7 @@ export function Conversation({
           </button>
         )}
 
-        {loaded && !messages.length && !incomingRequest && (
+        {loaded && !items.length && !incomingRequest && (
           <Empty
             icon={<Send />}
             title={t("chat.emptyTitle")}
@@ -607,19 +880,42 @@ export function Conversation({
           />
         )}
 
-        {messages.map((m, index) => {
-          const previous = messages[index - 1];
-          const newDay =
-            !previous || dayKey(previous.createdAt) !== dayKey(m.createdAt);
+        {items.map((item, index) => {
+          const previous = items[index - 1];
+          const newDay = !previous || dayKey(previous.at) !== dayKey(item.at);
+          if (item.kind === "call")
+            return (
+              <React.Fragment key={`c-${item.call.id}`}>
+                {newDay && <div className="day">{dayLabel(item.at)}</div>}
+                <CallEntry
+                  call={item.call}
+                  me={me}
+                  inThisCall={activeCallId === item.call.id}
+                  onCall={(video) => (callable ? call(video) : undefined)}
+                  onJoin={(c) => void calls.joinOngoing(c)}
+                />
+              </React.Fragment>
+            );
+          const m = item.m;
+          const sender = chat.others.find((u) => u.id === m.senderId);
           return (
             <React.Fragment key={m.id}>
               {newDay && <div className="day">{dayLabel(m.createdAt)}</div>}
+              {unreadFrom?.id === m.id && (
+                <div className="unread-divider">
+                  {unreadFrom.count === 1
+                    ? t("chat.unreadOne")
+                    : t("chat.unreadMany", { n: unreadFrom.count })}
+                </div>
+              )}
               <Bubble
                 m={m}
+                chat={chat}
                 own={m.senderId === me.id}
                 meId={me.id}
                 showSender={isGroup && m.senderId !== me.id}
                 senderName={nameOf(m.senderId, m.senderName)}
+                senderAvatar={sender?.avatar}
                 nameOf={nameOf}
                 highlighted={highlight === m.id}
                 menuOpen={menuFor === m.id}
@@ -629,16 +925,26 @@ export function Conversation({
                 onReact={(emoji) => void reactTo(m, emoji)}
                 onReply={() => {
                   setMenuFor(null);
+                  setEditing(null);
                   setReplyTo(m);
-                  composer.current?.focus();
                 }}
                 onCopy={() => void copy(m)}
                 onDelete={() => {
                   setMenuFor(null);
                   setDeleting(m);
                 }}
+                onEdit={() => {
+                  setMenuFor(null);
+                  setReplyTo(null);
+                  setEditing(m);
+                }}
+                onForward={() => {
+                  setMenuFor(null);
+                  setForwarding(m);
+                }}
                 onQuoteClick={(id) => void goTo(id)}
                 onMediaLoad={onMediaLoad}
+                onOpenMedia={() => setViewing(m.id)}
                 onOpenFile={() =>
                   m.attachment &&
                   void backend.openAttachment(m.attachment).catch((caught) =>
@@ -651,7 +957,7 @@ export function Conversation({
           );
         })}
 
-        {typingName && (
+        {typing && (
           <div className="bubble typing">
             <i />
             <i />
@@ -659,6 +965,26 @@ export function Conversation({
           </div>
         )}
       </div>
+
+      {showDown && (
+        <button
+          className="scroll-down"
+          onClick={() => {
+            const el = scroller.current;
+            if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+          }}
+          aria-label={t("chat.scrollDown")}
+        >
+          <ArrowDown size={20} />
+        </button>
+      )}
+
+      {dragging && (
+        <div className="drop-zone">
+          <Upload size={34} />
+          <b>{t("chat.dropHere")}</b>
+        </div>
+      )}
 
       {!composerHidden && messages.some((m) => m.senderId === me.id && m.waiting) && (
         <div className="composer-note waiting-note">
@@ -683,73 +1009,62 @@ export function Conversation({
       )}
 
       {!composerHidden && (
-        <footer>
-          {replyTo && (
-            <div className="reply-bar">
-              <CornerUpLeft size={16} />
-              <span>
-                <b>{nameOf(replyTo.senderId, replyTo.senderName)}</b>
-                <small>{messageSnippet(replyTo)}</small>
-              </span>
-              <button
-                onClick={() => setReplyTo(null)}
-                aria-label={t("common.cancel")}
-              >
-                <X size={16} />
-              </button>
-            </div>
-          )}
-          <div className="composer-row">
-            <input
-              ref={fileInput}
-              type="file"
-              hidden
-              accept="image/*,.pdf,.txt,.zip,.docx,.xlsx"
-              onChange={(e) => void sendAttachment(e.target.files?.[0])}
-            />
-            <button
-              className="plus"
-              title={t("chat.attach")}
-              aria-label={t("chat.attach")}
-              disabled={uploading}
-              onClick={() => fileInput.current?.click()}
-            >
-              <Paperclip />
-            </button>
-            <textarea
-              ref={composer}
-              rows={1}
-              value={text}
-              maxLength={8000}
-              onChange={(e) => {
-                setText(e.target.value);
-                backend.sendTyping(
-                  typingChannel.current,
-                  !!e.target.value,
-                  me.id,
-                );
-              }}
-              onBlur={() => backend.sendTyping(typingChannel.current, false, me.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-              placeholder={
-                uploading ? t("chat.uploading") : t("chat.placeholder")
-              }
-            />
-            <button
-              className="send"
-              disabled={!text.trim()}
-              onClick={() => void send()}
-              aria-label={t("chat.send")}
-            >
-              <Send />
-            </button>
-          </div>
-        </footer>
+        <Composer
+          me={me}
+          chatId={chat.id}
+          typingChannel={typingChannel}
+          replyTo={replyTo}
+          clearReply={() => setReplyTo(null)}
+          editing={editing}
+          clearEditing={() => setEditing(null)}
+          busy={busy}
+          nameOf={nameOf}
+          onSend={send}
+          onSaveEdit={saveEdit}
+          onFiles={openFiles}
+          onVoice={(file, info) => void sendVoice(file, info)}
+          onEditLast={() => {
+            if (lastMine && editable(lastMine, me.id) && !lastMine.attachment?.voice)
+              setEditing(lastMine);
+          }}
+          notify={notify}
+        />
+      )}
+
+      {pendingFiles && (
+        <SendFilesDialog
+          files={pendingFiles.files}
+          initialCaption={pendingFiles.caption}
+          send={(prepared, caption) => void sendFiles(prepared, caption)}
+          close={() => setPendingFiles(null)}
+        />
+      )}
+
+      {viewing && (
+        <MediaViewer
+          items={media}
+          startId={viewing}
+          nameOf={nameOf}
+          close={() => setViewing(null)}
+          onForward={(m) => {
+            setViewing(null);
+            setForwarding(m);
+          }}
+        />
+      )}
+
+      {forwarding && (
+        <ForwardDialog
+          chats={chats}
+          message={forwarding}
+          forward={async (m, ids) => {
+            await backend.forwardMessage(m, ids);
+            notify(ids.length === 1 ? t("msg.forwardedOne") : t("msg.forwardedMany", { n: ids.length }));
+            onChanged();
+            if (ids.includes(chat.id)) await refreshLatest(true);
+          }}
+          close={() => setForwarding(null)}
+        />
       )}
 
       {deleting && (
@@ -761,6 +1076,21 @@ export function Conversation({
         />
       )}
 
+      {dialog === "mute" && (
+        <MuteDialog
+          close={() => setDialog(null)}
+          choose={(ms) =>
+            void prefs(
+              {
+                // «Πάντα» = μέχρι το 9999: η βάση θέλει ημερομηνία, όχι άπειρο.
+                mutedUntil: new Date(ms === null ? Date.UTC(9999, 0, 1) : Date.now() + ms).toISOString(),
+              },
+              t("chat.mutedDone"),
+            )
+          }
+        />
+      )}
+
       {dialog === "details" && other && (
         <Modal title={t("chat.details")} close={() => setDialog(null)}>
           <div className="contact-card">
@@ -768,7 +1098,38 @@ export function Conversation({
             <b>{other.name}</b>
             {other.username && <small>{backend.handleOf(other)}</small>}
             <small>{other.email || t("people.privateEmail")}</small>
+            {presence && (
+              <small className={presence.online ? "online-text" : ""}>
+                {presence.online
+                  ? t("presence.online")
+                  : presence.lastSeen
+                    ? lastSeenText(presence.lastSeen)
+                    : ""}
+              </small>
+            )}
             {other.bio && <p>{other.bio}</p>}
+            {callable && (
+              <div className="contact-actions">
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setDialog(null);
+                    call(false);
+                  }}
+                >
+                  <Phone size={16} /> {t("chat.voiceCall")}
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setDialog(null);
+                    call(true);
+                  }}
+                >
+                  <Video size={16} /> {t("chat.videoCall")}
+                </button>
+              </div>
+            )}
           </div>
           <SafetyCode person={other} />
         </Modal>
@@ -813,202 +1174,44 @@ export function Conversation({
           close={() => setDialog(null)}
         />
       )}
-    </>
+    </div>
   );
 }
 
-function Bubble({
-  m,
-  own,
-  meId,
-  showSender,
-  senderName,
-  nameOf,
-  highlighted,
-  menuOpen,
-  toggleMenu,
-  onReact,
-  onReply,
-  onCopy,
-  onDelete,
-  onQuoteClick,
-  onMediaLoad,
-  onOpenFile,
-  canReply,
+function MuteDialog({
+  close,
+  choose,
 }: {
-  m: Msg;
-  own: boolean;
-  meId: string;
-  showSender: boolean;
-  senderName: string;
-  nameOf: (userId: string, fallback?: string | null) => string;
-  highlighted: boolean;
-  menuOpen: boolean;
-  toggleMenu: () => void;
-  onReact: (emoji: string) => void;
-  onReply: () => void;
-  onCopy: () => void;
-  onDelete: () => void;
-  onQuoteClick: (messageId: string) => void;
-  onMediaLoad: () => void;
-  onOpenFile: () => void;
-  canReply: boolean;
+  close: () => void;
+  choose: (ms: number | null) => void;
 }) {
-  const menu = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (menuOpen) menu.current?.scrollIntoView({ block: "nearest" });
-  }, [menuOpen]);
-
-  // Το url είναι βραχύβιο signed URL από το Supabase Storage (data.ts).
-  const mediaUrl = m.attachment?.url || "";
-  const mine = m.reactions?.find((r) => r.userId === meId)?.emoji;
-
-  // Ίδια emoji μαζί, με μετρητή.
-  const grouped = new Map<string, string[]>();
-  for (const r of m.reactions || [])
-    grouped.set(r.emoji, [...(grouped.get(r.emoji) || []), r.userId]);
-
+  const [pick, setPick] = useState<number>(0);
   return (
-    <div
-      id={`m-${m.id}`}
-      className={`msg ${own ? "own" : ""} ${highlighted ? "flash" : ""}`}
-    >
-      {showSender && <span className="sender">{senderName}</span>}
-      <div
-        className={`bubble ${own ? "own" : ""} ${m.deleted ? "deleted" : ""}`}
-        onClick={(e) => {
-          // Το πάτημα σε σύνδεσμο/αρχείο/παράθεση κάνει τη δική του δουλειά.
-          if ((e.target as HTMLElement).closest("a, .quote")) return;
-          toggleMenu();
-        }}
-      >
-        {m.replyTo && !m.deleted && (
-          <div
-            className="quote"
-            onClick={() => onQuoteClick(m.replyTo!.id)}
-            role="button"
-          >
-            <b>{nameOf(m.replyTo.senderId, m.replyTo.senderName)}</b>
-            <small>{messageSnippet(m.replyTo)}</small>
-          </div>
-        )}
-        {m.deleted ? (
-          <p className="deleted-text">
-            <Ban size={13} /> {t("msg.deleted")}
-          </p>
-        ) : (
-          <>
-            {m.attachment?.mime.startsWith("image/") && mediaUrl ? (
-              <a
-                href={mediaUrl}
-                target="_blank"
-                rel="noreferrer"
-                // Κρυπτογραφημένη εικόνα = blob: URL. Το «άνοιγμα σε νέα καρτέλα»
-                // δεν δουλεύει παντού (π.χ. iOS PWA)· η λήψη δουλεύει.
-                download={m.attachment.key ? m.attachment.name : undefined}
-              >
-                <img
-                  className="message-image"
-                  src={mediaUrl}
-                  alt={m.attachment.name}
-                  onLoad={onMediaLoad}
-                />
-              </a>
-            ) : m.attachment ? (
-              <a
-                className="file-card"
-                href={mediaUrl || "#"}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => {
-                  // Κρυπτογραφημένο αρχείο: κατεβαίνει και ανοίγει μόνο όταν το ζητήσεις.
-                  if (m.attachment?.key || !mediaUrl) {
-                    e.preventDefault();
-                    onOpenFile();
-                  }
-                }}
-              >
-                {m.attachment.key ? <Download /> : <FileText />}
-                <span>
-                  <b>{m.attachment.name}</b>
-                  <small>{fileSize(m.attachment.size)}</small>
-                </span>
-              </a>
-            ) : null}
-            {m.undecryptable ? (
-              <p className="undecryptable">
-                <LockKeyhole size={12} />{" "}
-                {t(m.pendingKey ? "msg.pendingKey" : "msg.undecryptable")}
-              </p>
-            ) : (
-              m.body && <p>{m.body}</p>
-            )}
-          </>
-        )}
-        <small>
-          {time(m.createdAt)}{" "}
-          {own &&
-            !m.deleted &&
-            (m.waiting ? (
-              <Clock aria-label={t("msg.waiting")} />
-            ) : m.readBy.length > 0 ? (
-              <CheckCheck />
-            ) : (
-              <Check />
-            ))}
-        </small>
+    <Modal title={t("chat.muteTitle")} icon={<BellOff size={18} />} close={close}>
+      <p>{t("chat.muteText")}</p>
+      <div className="mute-options">
+        {MUTE_OPTIONS.map((option, i) => (
+          <label key={option.key}>
+            <input type="radio" name="mute" checked={pick === i} onChange={() => setPick(i)} />
+            {t(`chat.mute_${option.key}`)}
+          </label>
+        ))}
       </div>
-
-      {grouped.size > 0 && (
-        <div className="reactions">
-          {[...grouped.entries()].map(([emoji, users]) => (
-            <button
-              key={emoji}
-              className={users.includes(meId) ? "mine" : ""}
-              title={users.map((id) => nameOf(id)).join(", ")}
-              onClick={() => onReact(emoji)}
-            >
-              {emoji}
-              {users.length > 1 && <span>{users.length}</span>}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {menuOpen && (
-        <>
-          <div className="click-away" onClick={toggleMenu} />
-          <div className="msg-menu" ref={menu}>
-            {!m.deleted && (
-              <div className="emoji-row">
-                {REACTIONS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    className={mine === emoji ? "mine" : ""}
-                    onClick={() => onReact(emoji)}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-            )}
-            {!m.deleted && canReply && (
-              <button onClick={onReply}>
-                <CornerUpLeft /> {t("msg.reply")}
-              </button>
-            )}
-            {!m.deleted && m.body && !m.undecryptable && (
-              <button onClick={onCopy}>
-                <Copy /> {t("msg.copy")}
-              </button>
-            )}
-            <button className="danger" onClick={onDelete}>
-              <Trash2 /> {t("msg.delete")}
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+      <div className="modal-actions">
+        <button className="ghost" onClick={close}>
+          {t("common.cancel")}
+        </button>
+        <button
+          className="primary"
+          onClick={() => {
+            choose(MUTE_OPTIONS[pick].ms);
+            close();
+          }}
+        >
+          {t("chat.mute")}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

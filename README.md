@@ -23,8 +23,9 @@ The browser talks directly to Supabase. There is no application server.
 
 - **Auth** — Supabase Auth, email and password plus Google Sign-In.
 - **Data** — Postgres, with Row Level Security as the only access control.
-- **Realtime** — Postgres changes for messages and receipts, Broadcast for typing.
+- **Realtime** — Postgres changes for messages, receipts and calls, Broadcast for typing.
 - **Media** — the private `message-media` Storage bucket, read through short-lived signed URLs.
+- **Calls** — WebRTC, device to device. The database only records who called whom and when (`calls`, `call_participants`, migration 0013); that is what rings the other side and fills the call history. The connection handshake travels over a Realtime Broadcast channel per call, sealed for each pair of devices with a key derived from their encryption keys, so the server relays it but cannot read or alter it. Group calls are a mesh of up to 8 people. `apps/web/src/calls.ts` has the whole engine.
 
 Reads and writes go through `security definer` RPCs rather than direct table access, so privacy rules and multi-table joins stay in the database. `apps/web/src/data.ts` is the single boundary between the UI and Supabase.
 
@@ -45,6 +46,12 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 
 ## Included
 
+- Voice and video calls, one to one and in groups of up to 8: ringing on every device, push notification when the app is closed, missed calls, busy, call waiting, mute, camera on/off, front/back camera, screen sharing on desktop, a minimised call bar, call history in the chat and in a Calls tab
+- Voice messages: hold the microphone to talk, slide to cancel, slide up to lock; waveform, seeking and 1×/1.5×/2× playback
+- Photos (resized, with location data stripped), videos with thumbnails, files, captions, several at once, drag and drop and paste; a full-screen viewer
+- Edit (15 minutes), forward (up to 5 chats), reply, react, copy, delete for me or for everyone
+- Sent, delivered and read ticks; online and last seen (reciprocal, can be hidden); "typing…" and "recording audio…"
+- Mute, pin (up to 3) and archive chats; unread divider; an emoji picker on desktop; unread count on the app icon
 - Email and password sign-in, Google Sign-In, profiles with an optional photo
 - People search that never lists strangers: they show up only for their exact, full email
 - One-to-one and group conversations, message requests, accept and reject, blocking and reporting
@@ -58,10 +65,12 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 ## Tests
 
 ```bash
-node scripts/test-e2ee.mjs            # encryption round trip and tamper checks
-node scripts/test-webpush.mjs         # notification encryption against RFC 8291
-supabase/tests/run.sh                 # every migration on a fresh Postgres, then RLS and limit tests
+npm test                              # encryption, call handshake sealing, Web Push (RFC 8291), TURN credentials
+supabase/tests/run.sh                 # every migration on a fresh Postgres, then RLS, limit and call tests
+npm run e2e                           # two and three real browsers against a local Supabase: chat, voice, calls
 ```
+
+`npm run e2e` needs a local stack (`supabase start` with the migrations applied), the dev server on `http://localhost:5173` pointed at it, and a Chromium (`CHROME=/path/to/chrome`). It uses fake camera and microphone devices, creates three local accounts, and refuses to touch a database that is not on localhost.
 
 `supabase/tests/run.sh` needs a PostgreSQL 15+ server you can create databases on (set `PGHOST`, `PGPORT`, `PGUSER`). It applies all migrations to a fake Supabase (`supabase/tests/supabase_shim.sql`) and runs each `test_*.sql` as real users, through the same RPCs the browser calls.
 
@@ -78,6 +87,10 @@ What it does not do, and what the app and privacy policy say:
 - The server hands out public keys. Users who need certainty compare the 60-digit safety code under Contact details, in person.
 - Metadata is not hidden: who talks to whom and when, attachment sizes, group names, reactions, profiles. Notifications carry no message text.
 - Search over encrypted messages runs on the device, over what it has already loaded. Messages sent before 0010 stay as plain text until their sender removes them (Settings → Older messages).
+
+**Calls are end-to-end encrypted.** Audio and video use DTLS-SRTP between the devices, with fresh keys for every call (so, unlike messages, calls do have forward secrecy). The certificate fingerprints that DTLS relies on are exchanged inside the sealed handshake, so a server that wanted to sit in the middle would have to break the device keys. What the server does see: who called whom, when, for how long, and whether it was video. When a call starts, each device asks a public STUN server (Google, Cloudflare) for its address, which shows that server its IP. On networks that block direct connections the call goes through a TURN relay, if one is configured; the relay sees IP addresses and traffic volume, never content.
+
+What calls do not do: ring as a native phone call (CallKit / ConnectionService). On a phone the app has to be open, or the push notification has to be tapped. iOS also pauses a web app in the background, so switching to another app during a call on an iPhone drops it.
 
 **Contact matching uses plain SHA-256 email hashes.** Email addresses have low entropy, so these hashes fall to a dictionary attack. This obscures addresses, it does not protect them. A keyed HMAC with a secret that never reaches the client, behind an Edge Function, is the correct design.
 
@@ -98,6 +111,7 @@ update public.rate_limit_rules set max_count = 50 where action = 'message' and w
 | `contact_import` / `contact_match` | 5 files, 1000 addresses a day |
 | `signup` (whole app) | 60 an hour, 500 a day |
 | `upload_media` / `upload_avatar` | 60 an hour and 300 a day / 20 a day |
+| `call` | 30 an hour, 200 a day |
 | `reaction`, `report`, `group_create`, `group_add`, `device_register`, `avatar_change` | see the migration |
 
 Supabase Auth has its own per-IP limits on top (Authentication → Rate Limits in the dashboard).
@@ -105,6 +119,7 @@ Supabase Auth has its own per-IP limits on top (Authentication → Rate Limits i
 ## Before launch
 
 1. Custom SMTP. The built-in Supabase mailer only delivers to organisation members and allows two messages an hour.
+1. A TURN relay for calls. Without one, calls between two mobile networks that both use carrier-grade NAT can fail to connect. Cloudflare's TURN service has a free tier: set `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` as secrets of the `push` Edge Function (or `TURN_URLS` with `TURN_SECRET` for your own coturn). See `docs/NEXT-STEPS.md`.
 2. Turn "Confirm email" back on. It is off for local testing, which lets anyone register an address they do not own.
 3. Upload scanning is impossible for encrypted files by design; storage quotas and retention still need a decision.
 4. Abuse review tooling for the reports table. Reported messages are encrypted, so a report can only carry what the reporter chooses to forward.

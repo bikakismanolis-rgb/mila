@@ -37,3 +37,6 @@ xcuserdata/
 # macOS / Windows σκουπίδια
 .DS_Store
 Thumbs.db
+
+# Στιγμιότυπα από τα e2e tests
+e2e-shots/

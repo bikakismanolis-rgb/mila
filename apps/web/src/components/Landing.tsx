@@ -8,8 +8,10 @@ import {
   LockKeyhole,
   Mail,
   MessageCircle,
+  Mic,
   ShieldCheck,
   Smartphone,
+  Video,
 } from "lucide-react";
 import { lang, setLang, t } from "../i18n";
 
@@ -22,6 +24,8 @@ export function Landing({
     { icon: <Mail />, title: t("landing.f1Title"), text: t("landing.f1Text") },
     { icon: <LockKeyhole />, title: t("landing.f2Title"), text: t("landing.f2Text") },
     { icon: <EyeOff />, title: t("landing.f3Title"), text: t("landing.f3Text") },
+    { icon: <Video />, title: t("landing.f5Title"), text: t("landing.f5Text") },
+    { icon: <Mic />, title: t("landing.f6Title"), text: t("landing.f6Text") },
     { icon: <ShieldCheck />, title: t("landing.f4Title"), text: t("landing.f4Text") },
   ];
   const steps = [t("landing.step1"), t("landing.step2"), t("landing.step3")];

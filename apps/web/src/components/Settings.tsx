@@ -145,6 +145,19 @@ export function SettingsPanel({
           }
         />
       </label>
+      <label className="toggle">
+        <span>
+          {t("settings.online")}
+          <small>{t("settings.onlineHint")}</small>
+        </span>
+        <input
+          type="checkbox"
+          checked={privacy.online}
+          onChange={(e) =>
+            setPrivacy({ ...privacy, online: e.target.checked })
+          }
+        />
+      </label>
       <button onClick={save} disabled={saving}>
         {saving ? t("common.working") : t("settings.save")}
       </button>

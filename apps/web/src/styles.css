@@ -366,7 +366,7 @@ button {
   min-height: 0;
   background: #f7f6fa;
 }
-.conversation > header {
+.conversation-inner > header {
   height: 80px;
   padding: 14px 24px;
   background: #fff;
@@ -375,23 +375,23 @@ button {
   align-items: center;
   gap: 13px;
 }
-.conversation > header img {
+.conversation-inner > header img {
   width: 46px;
   height: 46px;
   border-radius: 14px;
 }
-.conversation > header div {
+.conversation-inner > header div {
   display: flex;
   flex-direction: column;
 }
-.conversation > header small {
+.conversation-inner > header small {
   color: #7f7c8d;
   margin-top: 3px;
 }
-.conversation > header span {
+.conversation-inner > header span {
   flex: 1;
 }
-.conversation > header > svg {
+.conversation-inner > header > svg {
   color: #aaa;
   margin-left: 12px;
 }
@@ -544,7 +544,7 @@ button {
     transform: translateY(-4px);
   }
 }
-.conversation > footer {
+.conversation-inner > footer {
   padding: 15px 24px;
   background: #fff;
   display: flex;
@@ -944,7 +944,7 @@ button {
   .bubble {
     max-width: 82%;
   }
-  .conversation > footer {
+  .conversation-inner > footer {
     padding: 11px;
   }
   .login-card {
@@ -1937,7 +1937,7 @@ button {
   margin: 0 auto;
   padding: 20px 20px 10px;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 16px;
 }
 .landing-features article {
@@ -2210,4 +2210,1358 @@ button {
   background: var(--purple);
   color: #fff;
   font-weight: 600;
+}
+
+/* ===========================================================================
+   Συνομιλία: εσωτερικό πλαίσιο, κεφαλίδα με κλήσεις, αδιάβαστα, σύρσιμο αρχείων
+   ======================================================================== */
+.conversation-inner {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.conversation-inner > header .header-title {
+  min-width: 0;
+}
+.conversation-inner > header .header-title b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conversation-inner > header .header-title small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.muted-icon {
+  color: #a3a0b0;
+  flex: none;
+}
+.online-text {
+  color: #1f9d63 !important;
+}
+.typing-text {
+  color: var(--purple) !important;
+}
+.header-call {
+  flex: none;
+  background: transparent;
+  color: var(--purple);
+}
+.header-call:hover:not(:disabled) {
+  background: #f0eff6;
+}
+.header-call:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.join-call {
+  flex: none;
+  border: 0;
+  border-radius: 20px;
+  background: #1fa463;
+  color: #fff;
+  font-weight: 700;
+  padding: 9px 15px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  animation: join-pulse 1.6s ease-in-out infinite;
+}
+@keyframes join-pulse {
+  50% {
+    box-shadow: 0 0 0 6px #1fa46333;
+  }
+}
+.unread-divider {
+  margin: 18px auto;
+  width: max-content;
+  max-width: 100%;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: #fff;
+  color: var(--purple);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 2px 10px #34314612;
+}
+.scroll-down {
+  position: absolute;
+  right: 22px;
+  bottom: 96px;
+  z-index: 6;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #5b5867;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 22px #27233d26;
+}
+.drop-zone {
+  position: absolute;
+  inset: 80px 0 0;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #6557e8e6;
+  color: #fff;
+  font-size: 17px;
+  border: 3px dashed #ffffff99;
+  border-radius: 18px;
+  margin: 10px;
+  pointer-events: none;
+}
+
+/* --- Φούσκες: προωθημένο, επεξεργασμένο, τικ, μεγάλα emoji, μέσα ---------- */
+.forwarded {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-style: italic;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+.bubble small .edited {
+  font-style: italic;
+  margin-right: 2px;
+}
+.bubble small svg.read {
+  color: #2fb7ff;
+  opacity: 1;
+}
+.bubble.own small svg.read {
+  color: #8ee7ff;
+}
+.bubble.own small {
+  opacity: 0.8;
+}
+.bubble.big-emoji {
+  background: transparent;
+  box-shadow: none;
+  padding: 2px 4px;
+  color: inherit;
+}
+.bubble.big-emoji p {
+  font-size: 40px;
+  line-height: 1.15;
+}
+.bubble.big-emoji small {
+  color: #8d8a99;
+}
+.bubble.media {
+  padding: 5px;
+}
+.bubble.media p,
+.bubble.media .forwarded,
+.bubble.media .quote {
+  margin-left: 7px;
+  margin-right: 7px;
+}
+.bubble.media p {
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+.bubble.media > small {
+  padding: 0 7px 3px;
+}
+.bubble p a {
+  color: inherit;
+  text-decoration: underline;
+  word-break: break-all;
+}
+.media-open {
+  position: relative;
+  display: block;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: #ebe9f2;
+  border-radius: 12px;
+  overflow: hidden;
+  width: min(320px, 62vw);
+  max-height: 380px;
+  cursor: zoom-in;
+}
+.media-open .message-image {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: 380px;
+  margin: 0;
+  border-radius: 0;
+  object-fit: cover;
+}
+.media-placeholder {
+  display: block;
+  width: 100%;
+  min-height: 160px;
+  height: 100%;
+  background: linear-gradient(110deg, #ebe9f2 30%, #f6f5fa 50%, #ebe9f2 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s linear infinite;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.play-badge {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #0008;
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+.play-badge svg {
+  margin-left: 3px;
+}
+.media-duration {
+  position: absolute !important;
+  left: 8px;
+  bottom: 8px;
+  margin: 0 !important;
+  background: #0009;
+  color: #fff;
+  opacity: 1 !important;
+  font-size: 11px !important;
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+/* --- Φωνητικά ------------------------------------------------------------ */
+.voice-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: min(270px, 64vw);
+  padding: 2px 0;
+}
+.voice-avatar {
+  position: relative;
+  flex: none;
+}
+.voice-avatar img {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: block;
+}
+.voice-avatar svg {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  background: #fff;
+  color: #1fa463;
+  border-radius: 50%;
+  padding: 2px;
+  width: 17px;
+  height: 17px;
+}
+.voice-play {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--purple);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+.voice-player.own .voice-play {
+  background: #fff;
+  color: var(--purple);
+}
+.voice-play svg {
+  margin-left: 2px;
+}
+.voice-track {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.voice-wave {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  outline-offset: 3px;
+}
+.voice-wave i {
+  flex: 1;
+  min-width: 2px;
+  max-width: 4px;
+  border-radius: 2px;
+  background: #c9c5d9;
+}
+.voice-wave i.on {
+  background: var(--purple);
+}
+.voice-player.own .voice-wave i {
+  background: #ffffff66;
+}
+.voice-player.own .voice-wave i.on {
+  background: #fff;
+}
+.voice-track small {
+  margin: 0 !important;
+  justify-content: flex-start !important;
+  font-size: 11px !important;
+}
+.voice-speed {
+  flex: none;
+  border: 0;
+  border-radius: 14px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #6557e81f;
+  color: var(--purple);
+}
+.voice-player.own .voice-speed {
+  background: #ffffff33;
+  color: #fff;
+}
+
+/* Μικρόφωνο και μπάρα ηχογράφησης στο πεδίο γραψίματος. */
+.composer-row {
+  position: relative;
+  align-items: flex-end;
+}
+.send.mic {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.08s linear;
+}
+.send.mic.recording {
+  background: #e24563;
+  position: relative;
+  z-index: 3;
+  box-shadow: 0 0 0 10px #e2456322;
+}
+.voice-bar {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f3f2f7;
+  border-radius: 14px;
+  padding: 0 12px;
+  color: #5b5867;
+}
+.voice-bar.locked {
+  padding-right: 0;
+  background: transparent;
+}
+.voice-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e24563;
+  animation: blink 1s ease-in-out infinite;
+}
+.voice-dot.paused {
+  animation: none;
+  opacity: 0.4;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+.voice-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 42px;
+}
+.voice-slide {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #8d8a99;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.voice-lock {
+  position: absolute;
+  right: 4px;
+  bottom: 56px;
+  width: 36px;
+  height: 52px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 6px 18px #27233d26;
+  display: grid;
+  place-items: center;
+  color: #5b5867;
+}
+.voice-live {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+}
+.voice-live i {
+  flex: 1;
+  min-width: 2px;
+  max-width: 3px;
+  border-radius: 2px;
+  background: #e24563;
+}
+.voice-trash,
+.voice-pause {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0 !important;
+  background: #f3f2f7 !important;
+  color: #5b5867;
+  display: grid;
+  place-items: center;
+}
+.voice-trash {
+  color: #bd4056;
+}
+
+/* Emoji και μενού συνημμένων. */
+.composer-row .plus {
+  width: 40px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 12px;
+  color: #7a7686;
+}
+.composer-row .plus:hover:not(:disabled) {
+  background: #f3f2f7;
+}
+.attach-menu {
+  position: relative;
+  flex: none;
+}
+.menu-popover.up {
+  top: auto;
+  bottom: 52px;
+  left: 0;
+  right: auto;
+  min-width: 220px;
+}
+.emoji-picker {
+  position: absolute;
+  left: 16px;
+  bottom: calc(100% - 4px);
+  z-index: 30;
+  width: min(352px, calc(100vw - 32px));
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 18px 44px #27233d2e;
+  overflow: hidden;
+}
+.conversation-inner > footer {
+  position: relative;
+}
+.emoji-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  padding: 4px;
+}
+.emoji-tabs button {
+  flex: 1;
+  border: 0 !important;
+  background: transparent;
+  color: #8d8a99;
+  padding: 8px 0;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+}
+.emoji-tabs button.on {
+  background: #efedff;
+  color: var(--purple);
+}
+.emoji-grid {
+  height: 248px;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  padding: 6px;
+  align-content: start;
+}
+.emoji-grid button {
+  border: 0 !important;
+  background: transparent;
+  font-size: 23px;
+  line-height: 1;
+  padding: 6px 0;
+  border-radius: 9px;
+}
+.emoji-grid button:hover {
+  background: #f3f1f8;
+}
+.emoji-grid .hint {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 30px 12px;
+}
+.reply-bar.editing {
+  border-left-color: #1fa463;
+}
+.reply-bar.editing > svg,
+.reply-bar.editing b {
+  color: #1fa463;
+}
+
+/* --- Προβολή φωτογραφιών / βίντεο σε όλη την οθόνη ------------------------ */
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: #0d0c12f2;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+}
+.viewer header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
+}
+.viewer header span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.viewer header small {
+  opacity: 0.7;
+}
+.viewer-btn {
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff14;
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+.viewer-btn:hover {
+  background: #ffffff26;
+}
+.viewer-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+}
+.viewer-stage img,
+.viewer-stage video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.viewer-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 0;
+  background: #ffffff1f;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  z-index: 2;
+}
+.viewer-nav.prev {
+  left: 14px;
+}
+.viewer-nav.next {
+  right: 14px;
+}
+.viewer-error {
+  opacity: 0.75;
+}
+.viewer-caption {
+  margin: 0;
+  padding: 12px 18px calc(16px + env(safe-area-inset-bottom));
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+/* --- Αποστολή αρχείων --------------------------------------------------- */
+.send-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 12px;
+}
+.send-preview-media {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f3f2f7;
+}
+.send-preview-media img {
+  display: block;
+  max-width: 100%;
+  max-height: 42vh;
+  object-fit: contain;
+}
+.send-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+.send-strip button {
+  flex: none;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  border-radius: 11px;
+  border: 2px solid transparent;
+  background: #f3f2f7;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: #7a7686;
+}
+.send-strip button.on {
+  border-color: var(--purple);
+}
+.send-strip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.send-caption {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.send-caption .modal-field {
+  margin: 0;
+  flex: 1;
+}
+.send-caption .send {
+  border: 0;
+  flex: none;
+}
+.forward-list {
+  margin-top: 10px;
+}
+.mute-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 18px;
+}
+.mute-options label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.mute-options label:hover {
+  background: #f3f1f8;
+}
+.mute-options input {
+  accent-color: var(--purple);
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.contact-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.contact-actions button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* --- Λίστα συνομιλιών: καρφιτσωμένες, σίγαση, αρχείο, κλήσεις ------------- */
+.list-flags {
+  flex: none !important;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #a3a0b0;
+}
+.chatlist em.quiet {
+  background: #b6b3c3;
+}
+.archived-row .archived-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  background: #efedf9;
+  color: var(--purple);
+  display: grid;
+  place-items: center;
+}
+.archived-row > small {
+  color: #8d8a99;
+  font-size: 12px;
+}
+.list-call {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.call-icon-missed {
+  color: #d13c5a !important;
+}
+.sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.shell > nav button.nav-calls {
+  position: relative;
+}
+.shell > nav button em {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #e24563;
+  color: #fff;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+.calls-list .call-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 10px;
+  border-radius: 14px;
+}
+.calls-list .call-row:hover {
+  background: #efedf9;
+}
+.calls-list .call-row-main {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 12px;
+  display: flex;
+  gap: 12px;
+  text-align: left;
+  align-items: center;
+}
+.calls-list .call-row-main > span {
+  min-width: 0;
+  flex: 1;
+}
+.calls-list small {
+  display: flex !important;
+  align-items: center;
+  gap: 5px;
+}
+.call-row-action {
+  flex: none;
+  margin-right: 8px;
+  background: transparent !important;
+  color: var(--purple) !important;
+}
+.list-error {
+  padding: 0 24px;
+}
+
+/* --- Κλήσεις μέσα στη συνομιλία ---------------------------------------- */
+.call-entry {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0;
+}
+.call-entry button {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 16px;
+  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #4f4b59;
+  box-shadow: 0 2px 10px #34314610;
+  text-align: left;
+}
+.call-entry span {
+  display: flex;
+  flex-direction: column;
+}
+.call-entry b {
+  font-size: 13px;
+}
+.call-entry small {
+  font-size: 11.5px;
+  color: #8d8a99;
+}
+.call-entry.missed b,
+.call-entry.missed svg {
+  color: #d13c5a;
+}
+.call-entry em {
+  font-style: normal;
+  background: #1fa463;
+  color: #fff;
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* --- Η οθόνη της κλήσης ------------------------------------------------- */
+.call-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #fff;
+  background:
+    radial-gradient(circle at 50% 28%, #4a3fb8 0%, transparent 60%),
+    linear-gradient(180deg, #1e1b33, #121019);
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  overflow: hidden;
+}
+.call-screen.with-video {
+  background: #000;
+}
+.call-top {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 52px 1fr 52px;
+  align-items: center;
+  padding: 14px 14px 0;
+}
+.call-lock {
+  justify-self: center;
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+.call-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 0;
+  background: #ffffff1a;
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+.call-hero {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 18px;
+}
+.call-hero h2 {
+  font: 700 28px/1.2 Manrope, system-ui, sans-serif;
+  margin: 22px 0 6px;
+}
+.call-hero p {
+  margin: 0;
+  opacity: 0.8;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.call-group-title {
+  margin-top: 6px !important;
+  font-size: 20px !important;
+}
+.call-muted-note {
+  margin-top: 14px !important;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px !important;
+}
+.call-avatar {
+  position: relative;
+  width: 132px;
+  height: 132px;
+}
+.call-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  position: relative;
+  z-index: 1;
+}
+.call-avatar.pulsing::before,
+.call-avatar.pulsing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid #ffffff55;
+  animation: ripple 2.2s ease-out infinite;
+}
+.call-avatar.pulsing::after {
+  animation-delay: 1.1s;
+}
+@keyframes ripple {
+  from {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+.call-remote {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.call-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #000;
+}
+.call-video.cover {
+  object-fit: cover;
+}
+.call-video.contain {
+  object-fit: contain;
+}
+.call-video.mirror {
+  transform: scaleX(-1);
+}
+.call-overlay-title {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  text-align: center;
+  padding: 6px 18px;
+  text-shadow: 0 1px 6px #0009;
+}
+.call-overlay-title h2 {
+  margin: 0;
+  font: 700 19px Manrope, system-ui, sans-serif;
+}
+.call-overlay-title p {
+  margin: 2px 0 0;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+.call-screen.with-video .call-hero {
+  display: none;
+}
+.call-screen.with-video .call-top,
+.call-screen.with-video .call-overlay-title {
+  background: linear-gradient(#0008, transparent);
+}
+.call-screen.with-video .call-overlay-title {
+  flex: 1;
+  background: none;
+}
+.call-self {
+  position: absolute;
+  z-index: 4;
+  right: 16px;
+  top: calc(70px + env(safe-area-inset-top));
+  width: clamp(96px, 24vw, 200px);
+  aspect-ratio: 3 / 4;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px #0008;
+  border: 2px solid #ffffff33;
+  background: #000;
+}
+@media (min-width: 851px) {
+  .call-self {
+    aspect-ratio: 4 / 3;
+    top: auto;
+    bottom: 120px;
+  }
+}
+.call-controls {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 18px 16px 28px;
+  width: 100%;
+  background: linear-gradient(transparent, #0007);
+  flex-wrap: wrap;
+}
+.call-btn {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: #ffffff26;
+  transition: transform 0.1s;
+}
+.call-btn:active {
+  transform: scale(0.94);
+}
+.call-btn.light {
+  background: #fff;
+  color: #1e1b33;
+}
+.call-btn.dim {
+  background: #ffffff26;
+}
+.call-btn.hangup {
+  background: #e24563;
+}
+.call-btn.accept {
+  background: #1fa463;
+  animation: accept-bounce 1.4s ease-in-out infinite;
+}
+@keyframes accept-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-6px);
+  }
+}
+.call-close {
+  border: 0;
+  border-radius: 24px;
+  padding: 14px 36px;
+  background: #ffffff26;
+  color: #fff;
+  font-weight: 700;
+}
+.call-answer {
+  position: relative;
+  z-index: 3;
+  width: min(100%, 460px);
+  display: flex;
+  justify-content: space-evenly;
+  padding: 24px 16px 48px;
+}
+.call-answer > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+}
+.call-answer .call-btn {
+  width: 68px;
+  height: 68px;
+}
+.call-answer small {
+  font-size: 13px;
+  opacity: 0.85;
+}
+.call-unmute {
+  position: absolute;
+  z-index: 6;
+  top: 46%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: 24px;
+  padding: 12px 20px;
+  background: #fff;
+  color: #1e1b33;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 10px 30px #0006;
+}
+.call-notice {
+  position: relative;
+  z-index: 6;
+  margin: 0 16px 6px;
+  max-width: 460px;
+  text-align: center;
+  background: #000a;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+}
+.call-grid {
+  width: min(960px, 100%);
+  flex: 1;
+  min-height: 0;
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr;
+  grid-auto-rows: 1fr;
+}
+.call-grid.n2 {
+  grid-template-columns: 1fr;
+}
+.call-grid.n3,
+.call-grid.n4 {
+  grid-template-columns: 1fr 1fr;
+}
+.call-grid.n5,
+.call-grid.n6 {
+  grid-template-columns: 1fr 1fr;
+}
+.call-grid.n7,
+.call-grid.n8 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+@media (min-width: 851px) {
+  .call-grid.n2 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .call-grid.n5,
+  .call-grid.n6 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  .call-grid.n7,
+  .call-grid.n8 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+.call-tile {
+  position: relative;
+  min-height: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ffffff12;
+  display: grid;
+  place-items: center;
+}
+.call-tile.ringing {
+  opacity: 0.6;
+}
+.call-tile-avatar img {
+  width: clamp(56px, 12vw, 96px);
+  height: clamp(56px, 12vw, 96px);
+  border-radius: 50%;
+}
+.call-tile .call-video {
+  position: absolute;
+  inset: 0;
+}
+.call-tile-name {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  background: #0008;
+  padding: 4px 9px;
+  border-radius: 10px;
+  max-width: calc(100% - 16px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Η κλήση σε μικρή μπάρα, όσο κοιτάς κάτι άλλο. */
+.call-mini {
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(10px + env(safe-area-inset-top));
+  width: min(520px, calc(100% - 20px));
+  display: flex;
+  align-items: stretch;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #1fa463;
+  color: #fff;
+  box-shadow: 0 12px 30px #0003;
+}
+.call-mini-open {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 14px;
+  text-align: left;
+}
+.call-mini-open b {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.call-mini-open span {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
+.call-mini-open small {
+  margin-left: auto;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+.call-mini-end {
+  flex: none;
+  width: 54px;
+  border: 0;
+  background: #e24563;
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+/* Στον υπολογιστή η μπάρα κάθεται κάτω αριστερά, πάνω από τη λίστα, για να
+   μην κρύβει την κεφαλίδα της συνομιλίας. */
+@media (min-width: 851px) {
+  .call-mini {
+    left: 86px;
+    transform: none;
+    top: auto;
+    bottom: 18px;
+    width: 352px;
+  }
+}
+
+/* «Σε καλεί κι άλλος» ενώ μιλάς. */
+.call-waiting {
+  position: fixed;
+  z-index: 80;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  width: min(480px, calc(100% - 20px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  color: var(--ink);
+  border-radius: 16px;
+  padding: 12px 12px 12px 16px;
+  box-shadow: 0 14px 40px #0005;
+}
+.call-waiting span {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.call-waiting small {
+  color: var(--muted);
+}
+.call-waiting button {
+  border: 0;
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-weight: 700;
+  color: #fff;
+}
+.call-waiting .decline {
+  background: #e24563;
+}
+.call-waiting .accept {
+  background: #1fa463;
+}
+
+@media (max-width: 850px) {
+  .conversation-inner > header {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .conversation-inner > header .header-call {
+    width: 38px;
+  }
+  .scroll-down {
+    bottom: 84px;
+    right: 14px;
+  }
+  .call-hero h2 {
+    font-size: 25px;
+  }
+  .call-btn {
+    width: 56px;
+    height: 56px;
+  }
+  .call-controls {
+    gap: 12px;
+  }
+  .emoji-picker {
+    left: 8px;
+  }
+  .shell > nav button em {
+    right: calc(50% - 22px);
+  }
 }
