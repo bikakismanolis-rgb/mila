@@ -426,7 +426,10 @@ async function cloudflareTurn(): Promise<IceServer[]> {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ ttl: ICE_TTL }),
-    }).catch(() => null);
+    }).catch((error) => {
+      console.error("cloudflare turn unreachable:", String(error));
+      return null;
+    });
     if (!response) return [];
     if (response.status === 404) continue;
     if (!response.ok) {
@@ -437,6 +440,9 @@ async function cloudflareTurn(): Promise<IceServer[]> {
     const list = Array.isArray(data.iceServers) ? data.iceServers : data.iceServers ? [data.iceServers] : [];
     return list.map(withoutPort53).filter((s) => (s.urls as string[]).length);
   }
+  // 404 και στις δύο διευθύνσεις: σχεδόν πάντα λάθος αναγνωριστικό κλειδιού.
+  // Να φαίνεται στα logs· αλλιώς οι κλήσεις πίσω από NAT αποτυγχάνουν σιωπηλά.
+  console.error("cloudflare turn: 404 on generate-ice-servers and generate; check CLOUDFLARE_TURN_KEY_ID");
   return [];
 }
 
