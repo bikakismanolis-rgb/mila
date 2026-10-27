@@ -89,8 +89,6 @@ const en = {
   "login.displayNameHint": "How people know you",
   "login.signIn": "Sign in",
   "login.createAccount": "Create account",
-  "login.consentBefore": "By creating an account you agree to our",
-  "login.privacyPolicy": "privacy policy",
   "login.consentAfter":
     "Messages are end-to-end encrypted: they are locked on your device before they leave it.",
   "login.newHere": "New here?",
@@ -682,6 +680,17 @@ const en = {
   "squeeze.working": "Making the video smaller… {p}%",
   "squeeze.workingN": "Making video {i} of {n} smaller… {p}%",
   "squeeze.keepOpen": "Keep Mila open until it's done.",
+
+  // --- legal ---
+  "legal.consentBefore": "By creating an account you accept the",
+  "legal.googleConsentBefore":
+    "If you are new, continuing with Google creates an account and you accept the",
+  "legal.terms": "terms of use",
+  "legal.and": "and the",
+  "legal.privacy": "privacy policy",
+  "legal.readTerms": "Read the terms of use",
+  "legal.readTermsAfter": "— the rules everyone here agrees to.",
+  "legal.footerTerms": "Terms",
 } as const;
 
 export type TKey = keyof typeof en;
@@ -714,8 +723,6 @@ const el: Record<TKey, string> = {
   "login.displayNameHint": "Πώς θα σε βλέπουν οι άλλοι",
   "login.signIn": "Σύνδεση",
   "login.createAccount": "Δημιουργία λογαριασμού",
-  "login.consentBefore": "Δημιουργώντας λογαριασμό συμφωνείς με την",
-  "login.privacyPolicy": "πολιτική απορρήτου",
   "login.consentAfter":
     "Τα μηνύματα κρυπτογραφούνται από άκρη σε άκρη: κλειδώνουν στη συσκευή σου πριν φύγουν από αυτήν.",
   "login.newHere": "Πρώτη φορά εδώ;",
@@ -1307,6 +1314,17 @@ const el: Record<TKey, string> = {
   "squeeze.working": "Το βίντεο μικραίνει… {p}%",
   "squeeze.workingN": "Μικραίνει το βίντεο {i} από {n}… {p}%",
   "squeeze.keepOpen": "Κράτα το Mila ανοιχτό μέχρι να τελειώσει.",
+
+  // --- legal ---
+  "legal.consentBefore": "Με τη δημιουργία λογαριασμού αποδέχεσαι τους",
+  "legal.googleConsentBefore":
+    "Την πρώτη φορά, η σύνδεση με Google φτιάχνει λογαριασμό, και αποδέχεσαι τους",
+  "legal.terms": "όρους χρήσης",
+  "legal.and": "και την",
+  "legal.privacy": "πολιτική απορρήτου",
+  "legal.readTerms": "Διάβασε τους όρους χρήσης",
+  "legal.readTermsAfter": "— οι κανόνες που δεχόμαστε όλοι εδώ.",
+  "legal.footerTerms": "Όροι",
 };
 
 const dictionaries: Record<Lang, Record<TKey, string>> = { en, el };

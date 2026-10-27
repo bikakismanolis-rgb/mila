@@ -70,11 +70,16 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 npm test                              # encryption, call handshake sealing, Web Push (RFC 8291), TURN credentials, attachment size limits
 supabase/tests/run.sh                 # every migration on a fresh Postgres, then RLS, limit and call tests
 npm run e2e                           # two and three real browsers against a local Supabase: chat, voice, calls
+node scripts/serve-dist.mjs --check   # both vercel.json files agree, security headers, no inline code in static pages
 ```
 
 `npm run e2e` needs a local stack (`supabase start` with the migrations applied), the dev server on `http://localhost:5173` pointed at it, and a Chromium (`CHROME=/path/to/chrome`). It uses fake camera and microphone devices, creates three local accounts, and refuses to touch a database that is not on localhost.
 
 `supabase/tests/run.sh` needs a PostgreSQL 15+ server you can create databases on (set `PGHOST`, `PGPORT`, `PGUSER`). It applies all migrations to a fake Supabase (`supabase/tests/supabase_shim.sql`) and runs each `test_*.sql` as real users, through the same RPCs the browser calls.
+
+The Vite dev server does not send the `vercel.json` headers. To test the Content-Security-Policy, build for the local stack and serve the build the way Vercel does: `node scripts/serve-dist.mjs --port 4173 --supabase http://127.0.0.1:54321` (the flag swaps the production Supabase origin in the CSP for the local one). Then run any e2e suite with `E2E_BASE=http://localhost:4173`, and `scripts/e2e/csp.mjs`, which fails on any CSP violation.
+
+CI (`.github/workflows/ci.yml`) runs typecheck, build, `npm test`, the header check and the database tests on every pull request and every push to `master`.
 
 ## Security status
 
@@ -121,12 +126,20 @@ Supabase Auth has its own per-IP limits on top (Authentication → Rate Limits i
 
 ## Before launch
 
-1. Custom SMTP. The built-in Supabase mailer only delivers to organisation members and allows two messages an hour.
+Done:
+
+- Custom SMTP. Resend (`smtp.resend.com`) sends account email from `noreply@milamessenger.com`, and "Confirm email" is on, so nobody can register an address they do not own.
+- Terms of use (`/terms`) and a privacy policy (`/privacy`), each in Greek and English, linked from sign-up, Settings and the landing page.
+- Moderation tools: reports, a content-free push to moderators for each new report, and account suspension. See `docs/MODERATION.md`.
+- Security headers in `vercel.json` (Content-Security-Policy, `frame-ancestors 'none'`, nosniff, Referrer-Policy, a Permissions-Policy that keeps camera, microphone and screen sharing), checked in CI.
+
+Still to do:
+
 1. A TURN relay for calls. Without one, calls between two mobile networks that both use carrier-grade NAT can fail to connect. Cloudflare's TURN service has a free tier: set `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` as secrets of the `push` Edge Function (or `TURN_URLS` with `TURN_SECRET` for your own coturn). See `docs/NEXT-STEPS.md`.
-2. Turn "Confirm email" back on. It is off for local testing, which lets anyone register an address they do not own.
-3. Upload scanning is impossible for encrypted files by design; storage quotas and retention still need a decision.
-4. Add yourself as a moderator and read `docs/MODERATION.md` (reports, suspension, the EU Digital Services Act in plain words). In Supabase → Authentication, set the minimum password length to 8, like the app.
-5. Accessibility audit and terms of use.
+2. The owner's name and contact email in the terms and the privacy policy (`[FULL NAME]`, `[CONTACT EMAIL]`).
+3. Add yourself as a moderator and read `docs/MODERATION.md` (reports, suspension, the EU Digital Services Act in plain words). In Supabase Auth set the minimum password length to 8 (Authentication → Providers → Email), matching the app.
+4. Storage quotas and retention. The Free plan has 1 GB of file storage and an attachment can be 50 MB. Upload scanning is impossible for encrypted files by design.
+5. An accessibility audit.
 6. Forward secrecy for the encryption (see Security status).
 
 ## Account deletion

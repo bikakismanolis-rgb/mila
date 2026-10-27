@@ -2056,6 +2056,7 @@ button {
 }
 .landing-footer span {
   margin-left: auto;
+  white-space: nowrap;
 }
 .login .login-back {
   display: inline-flex;

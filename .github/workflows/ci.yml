@@ -1,0 +1,65 @@
+# Σε κάθε pull request και σε κάθε push στο master: typecheck, build, unit
+# tests, ο έλεγχος των headers ασφαλείας, και τα tests της βάσης πάνω σε μια
+# καθαρή Postgres. Αν κάτι κοκκινίσει, η αλλαγή δεν πρέπει να φτάσει στους
+# χρήστες. Δεν χρειάζεται κανένα secret.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+# Ένα νέο push στο ίδιο PR ακυρώνει το παλιό τρέξιμο.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Typecheck, build, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Τα tests διαβάζουν απευθείας .ts αρχεία: θέλουν Node 22.18+.
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - name: Security headers and static pages
+        run: node scripts/serve-dist.mjs --check
+
+  database:
+    name: Database tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: psql and createdb
+        run: command -v psql >/dev/null || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+      - run: bash supabase/tests/run.sh

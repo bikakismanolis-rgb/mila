@@ -5,6 +5,8 @@
 // Οι διαφορές είναι λίγες αλλά κρίσιμες — κυρίως το origin, που στα native
 // δεν είναι το domain μας και χαλάει τα auth redirects.
 
+import { lang } from "./i18n";
+
 declare global {
   interface Window {
     Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string };
@@ -55,10 +57,14 @@ export const authRedirectUrl: string =
 export const passwordResetRedirectUrl = `${authRedirectUrl}/?resetPassword=1`;
 
 /**
- * Το privacy policy. Πάντα απόλυτο URL: μέσα σε Capacitor ένα σκέτο "/privacy"
- * θα έψαχνε αρχείο μέσα στο bundle του app, που δεν υπάρχει εκεί.
+ * Η πολιτική απορρήτου και οι όροι χρήσης. Πάντα απόλυτο URL: μέσα σε
+ * Capacitor ένα σκέτο "/privacy" θα έψαχνε αρχείο μέσα στο bundle του app, που
+ * δεν υπάρχει εκεί. Κάθε σελίδα έχει και τις δύο γλώσσες· το #en ανοίγει
+ * κατευθείαν τα Αγγλικά.
  */
-export const privacyPolicyUrl = `${publicSiteUrl}/privacy`;
+const legalSection = lang === "en" ? "#en" : "";
+export const privacyPolicyUrl = `${publicSiteUrl}/privacy${legalSection}`;
+export const termsUrl = `${publicSiteUrl}/terms${legalSection}`;
 
 /** Πότε ΔΕΝ κάνει να ξαναφορτώσει η σελίδα (π.χ. στη μέση μιας κλήσης), και
  *  πώς μαθαίνουμε ότι αυτό άλλαξε. */
