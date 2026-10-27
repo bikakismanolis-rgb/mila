@@ -46,6 +46,9 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
+          # Ίδια ταξινόμηση με το τοπικό harness (C.UTF-8): η εικόνα έχει
+          # en_US.utf8, που βάζει τα κλειδιά με άλλη σειρά.
+          POSTGRES_INITDB_ARGS: --locale=C.UTF-8
         ports:
           - 5432:5432
         options: >-

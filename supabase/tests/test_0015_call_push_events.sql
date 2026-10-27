@@ -143,12 +143,12 @@ select test.ok((select jsonb_array_length(push_call_ended_targets(:'c1', :eve)->
 select test.ok((select push_call_ended_targets(:'c1', :fay)->'payload'->>'event') = 'ended', 'payload says ended');
 -- Χωρίς περιεχόμενο, όπως το «σε καλεί»: μόνο ποια κλήση και ποιος.
 select test.ok(
-  (select array_agg(k order by k) from jsonb_object_keys(push_call_ended_targets(:'c1', :fay)->'payload') k)
+  (select array_agg(k order by k collate "C") from jsonb_object_keys(push_call_ended_targets(:'c1', :fay)->'payload') k)
     = array['callId', 'callerName', 'conversationId', 'event', 'isGroup', 'title', 'type', 'video'],
   'end payload carries no content');
 select test.ok(
-  (select array_agg(k order by k) from jsonb_object_keys(push_call_ended_targets(:'c1', :fay)->'payload') k)
-    = (select array_agg(k order by k) from jsonb_object_keys(push_call_targets(:'c1', 'ring')->'payload') k),
+  (select array_agg(k order by k collate "C") from jsonb_object_keys(push_call_ended_targets(:'c1', :fay)->'payload') k)
+    = (select array_agg(k order by k collate "C") from jsonb_object_keys(push_call_targets(:'c1', 'ring')->'payload') k),
   'end payload has the same fields as the ring payload');
 
 select set_config('request.jwt.claim.sub', :eve, false);
