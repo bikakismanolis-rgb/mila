@@ -51,15 +51,18 @@ const NOT_THE_APP = /^\/(privacy|terms|install|qr|icons|assets)(\/|$)|\.[a-z0-9]
 
 /** Ως «κέλυφος» για όταν δεν υπάρχει δίκτυο φυλάγεται μόνο το ίδιο το app:
  *  επιτυχημένη απάντηση, χωρίς ανακατεύθυνση, με το <div id="root">. Όχι
- *  σελίδα σφάλματος, ούτε κάποια άλλη σελίδα του site. */
+ *  σελίδα σφάλματος, ούτε κάποια άλλη σελίδα του site. Φυλάγεται ολόκληρη η
+ *  απάντηση, με τα headers της: χωρίς το Content-Security-Policy κ.λπ. το app
+ *  που ανοίγει offline θα έτρεχε χωρίς αυτή την προστασία. */
 async function keepShell(response) {
   const type = response.headers.get("content-type") || "";
   if (!response.ok || response.redirected || response.type !== "basic" || !type.includes("text/html"))
     return;
+  const copy = response.clone();
   const html = await response.text();
   if (!html.includes('id="root"')) return;
   const cache = await caches.open(SHELL);
-  await cache.put("/", new Response(html, { headers: { "Content-Type": type } }));
+  await cache.put("/", copy);
 }
 
 self.addEventListener("fetch", (event) => {

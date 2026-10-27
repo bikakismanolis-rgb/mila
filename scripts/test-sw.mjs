@@ -206,11 +206,23 @@ async function navigate(w, path, answer) {
   }
   assert.equal(await w.scope.caches.match("/"), undefined, "static pages never become the shell");
 
-  // Το ίδιο το app: φυλάγεται.
-  let result = await navigate(w, "/", page(APP));
+  // Το ίδιο το app: φυλάγεται, μαζί με τα headers ασφαλείας του.
+  const csp = "default-src 'self'";
+  let result = await navigate(
+    w,
+    "/",
+    page(APP, {
+      headers: new Headers({ "content-type": "text/html; charset=utf-8", "content-security-policy": csp }),
+    }),
+  );
   assert.equal(result.intercepted, true);
   assert.ok(await w.scope.caches.match("/"), "the app is kept as the offline shell");
   assert.ok((await (await w.scope.caches.match("/")).text()).includes('id="root"'));
+  assert.equal(
+    (await w.scope.caches.match("/")).headers.get("content-security-policy"),
+    csp,
+    "the offline shell keeps the CSP",
+  );
 
   // Ό,τι δεν είναι το app δεν παίρνει τη θέση του.
   const bad = [
