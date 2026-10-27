@@ -8,7 +8,7 @@
 //   node scripts/test-smtp.mjs <host> <port> <user> <pass> <fromEmail> <toEmail>
 //
 // Example (Brevo):
-//   node scripts/test-smtp.mjs smtp-relay.brevo.com 587 "xxxxx@smtp-brevo.com" "your-smtp-key" "bikakis.manolis@gmail.com" "bikakis.manolis@gmail.com"
+//   node scripts/test-smtp.mjs smtp-relay.brevo.com 587 "xxxxx@smtp-brevo.com" "your-smtp-key" "noreply@milamessenger.com" "you@example.com"
 
 import nodemailer from "nodemailer";
 
