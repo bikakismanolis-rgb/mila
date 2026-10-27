@@ -36,9 +36,15 @@ export type User = {
   privacy: Privacy | null;
   /** «Σε σύνδεση» / «τελευταία φορά». null όταν δεν δικαιούμαι να το δω. */
   presence?: Presence | null;
+  /** Μόνο για τον εαυτό μου: ο λογαριασμός είναι σε αναστολή (0014). */
+  suspended?: Suspension | null;
 };
 
 export type Presence = { online: boolean; lastSeen: string | null };
+
+/** Πότε και γιατί ανεστάλη ο λογαριασμός. Την αιτία τη γράφουν οι συντονιστές
+ *  για να τη διαβάσει ο ίδιος. */
+export type Suspension = { at: string; reason: string | null };
 
 export type Member = User & { role?: "member" | "admin" };
 
@@ -185,6 +191,9 @@ const AVATARS = "avatars";
 const MAX_UPLOAD = 15 * 1024 * 1024;
 /** Πόσα μηνύματα έρχονται ανά σελίδα. Ίδιο με το default του list_messages. */
 export const PAGE_SIZE = 50;
+/** Ελάχιστο μήκος για ΝΕΟ κωδικό (εγγραφή, αλλαγή, επαναφορά). Η σύνδεση με
+ *  παλιό, μικρότερο κωδικό δουλεύει κανονικά. */
+export const MIN_PASSWORD = 8;
 
 function db() {
   if (!supabase) throw new Error(t("err.notConfigured"));
@@ -194,7 +203,16 @@ function db() {
 /** Πετάει σφάλμα στη γλώσσα του χρήστη. Το μήνυμα της βάσης, αν το ξέρουμε,
  *  μεταφράζεται· αλλιώς μπαίνει το γενικό μήνυμα της ενέργειας. */
 function fail(fallback: TKey, error: { message?: string } | null): never {
+  checkAccountOn(error);
   throw new Error(translateError(error?.message) || t(fallback));
+}
+
+/** Η βάση αρνήθηκε επειδή ο λογαριασμός είναι σε αναστολή (ή δεν θεωρεί τον
+ *  χρήστη ενεργό). Το main.tsx ξανακοιτάζει το προφίλ και, αν χρειάζεται,
+ *  δείχνει την οθόνη αναστολής αντί για ένα app που απλώς «χαλάει». */
+function checkAccountOn(error: { message?: string } | null) {
+  if (/account suspended|not authenticated/i.test(error?.message || ""))
+    window.dispatchEvent(new Event("mila:account-check"));
 }
 
 async function currentUserId(): Promise<string> {
@@ -306,6 +324,8 @@ type ProfileRow = {
   show_email: Privacy["showEmail"];
   read_receipts: boolean;
   show_online: boolean;
+  suspended_at?: string | null;
+  suspended_reason?: string | null;
 };
 
 function toUser(row: ProfileRow): User {
@@ -326,6 +346,9 @@ function toUser(row: ProfileRow): User {
       receipts: row.read_receipts,
       online: row.show_online,
     },
+    suspended: row.suspended_at
+      ? { at: row.suspended_at, reason: row.suspended_reason || null }
+      : null,
   };
 }
 
@@ -777,7 +800,9 @@ export async function exportMyData(): Promise<unknown> {
   };
   if (payload?.messages?.some((m) => m.e2ee)) {
     const uid = await currentUserId();
-    const device = await ensureDevice();
+    // Σε αναστολή η βάση δεν δέχεται πια τη δήλωση της συσκευής, αλλά τα
+    // κλειδιά της είναι ακόμα εδώ και ανοίγουν τα δικά μου μηνύματα.
+    const device = await ensureDevice().catch(() => e2ee.loadOrCreateDevice(uid));
     payload.messages = await Promise.all(
       payload.messages.map(async ({ e2ee: box, ...rest }) => {
         if (!box) return rest;
@@ -788,7 +813,9 @@ export async function exportMyData(): Promise<unknown> {
       }),
     );
   }
-  // Το ιστορικό κλήσεων (ποιος, πότε, πόσο) είναι κι αυτό δικά σου δεδομένα.
+  // Το ιστορικό κλήσεων το δίνει πλέον η ίδια η βάση (0014)· από εδώ μόνο αν
+  // τρέχει ακόμα παλιότερη βάση.
+  if ((payload as { calls?: unknown }).calls) return payload;
   const calls = await listCalls().catch(() => []);
   return { ...payload, calls };
 }
@@ -1422,18 +1449,26 @@ export async function listBlocked(): Promise<User[]> {
   return usersFrom(data);
 }
 
-export async function reportUser(
-  userId: string,
-  reason: string,
-): Promise<void> {
-  const uid = await currentUserId();
-  const { error } = await db()
-    .from("reports")
-    .insert({
-      reporter_id: uid,
-      reported_id: userId,
-      reason: reason.slice(0, 500),
-    });
+/**
+ * Αναφορά για μήνυμα (messageId), ομάδα (μόνο conversationId) ή άνθρωπο
+ * (userId). Το excerpt είναι κείμενο που ΗΔΗ βλέπει ο χρήστης και επέλεξε
+ * ρητά να σταλεί στους συντονιστές: χωρίς αυτό, δεν διαβάζουν τίποτα, αφού τα
+ * μηνύματα είναι κρυπτογραφημένα.
+ */
+export async function sendReport(report: {
+  reason: string;
+  userId?: string;
+  conversationId?: string;
+  messageId?: string;
+  excerpt?: string;
+}): Promise<void> {
+  const { error } = await db().rpc("submit_report", {
+    p_reason: report.reason.slice(0, 500),
+    p_user: report.userId ?? null,
+    p_conversation: report.conversationId ?? null,
+    p_message: report.messageId ?? null,
+    p_excerpt: report.excerpt?.slice(0, 4000) || null,
+  });
   if (error) fail("err.report", error);
 }
 
@@ -1570,9 +1605,12 @@ export function subscribeToCalls(onChange: (callId: string) => void): RealtimeCh
 
 export async function touchPresence(online: boolean): Promise<void> {
   try {
-    await db().rpc("touch_presence", { online });
+    const { error } = await db().rpc("touch_presence", { online });
+    // Δεν είναι λόγος να ενοχληθεί ο χρήστης. Είναι όμως ο πρώτος που μαθαίνει
+    // (μέσα σε 30'') ότι ο λογαριασμός μπήκε σε αναστολή.
+    if (error) checkAccountOn(error);
   } catch {
-    // Δεν είναι λόγος να ενοχληθεί ο χρήστης.
+    // Ούτε το δίκτυο.
   }
 }
 

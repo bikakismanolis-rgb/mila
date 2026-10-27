@@ -54,6 +54,7 @@ import { CallOverlay } from "./components/Call";
 import { CallIcon, CallsList, describeCall, unseenMissed } from "./components/CallsTab";
 import { NewGroupDialog } from "./components/Groups";
 import { InviteDialog } from "./components/Invite";
+import { SuspendedScreen } from "./components/Suspended";
 
 const messageOf = (caught: unknown) =>
   translateError(caught instanceof Error ? caught.message : String(caught)) ||
@@ -125,6 +126,9 @@ function takeConversationFromUrl(): string | null {
 
 function App() {
   const [me, setMe] = useState<User | null>(null),
+    // Λογαριασμός σε αναστολή: δεν μπαίνει καν στο app (το me μένει null, άρα
+    // δεν ξεκινάνε λίστα, κλήσεις, «σε σύνδεση»), βλέπει μόνο την οθόνη αναστολής.
+    [suspended, setSuspended] = useState<User | null>(null),
     // Μέχρι να ξέρουμε αν υπάρχει ήδη συνεδρία, δεν δείχνουμε ούτε αρχική
     // σελίδα ούτε είσοδο: αλλιώς ένας συνδεδεμένος χρήστης τις βλέπει να
     // «αναβοσβήνουν» πριν ανοίξει η εφαρμογή.
@@ -170,6 +174,41 @@ function App() {
   activeIdRef.current = activeId;
 
   const notify = useCallback((message: string) => setToast(message), []);
+
+  // Ο χρήστης που μόλις μάθαμε (σύνδεση, επαναφορά, έλεγχος). Το
+  // onAuthStateChange πυροδοτείται και σε TOKEN_REFRESHED και όταν η καρτέλα
+  // ξαναπαίρνει focus: ίδιος χρήστης = ίδιο αντικείμενο, αλλιώς θα ξαναστηνόταν
+  // από την αρχή η σύνδεση realtime.
+  const accept = useCallback((user: User) => {
+    if (user.suspended) {
+      setSuspended(user);
+      setMe(null);
+      return;
+    }
+    setSuspended(null);
+    setMe((prev) => (prev?.id === user.id ? prev : user));
+  }, []);
+
+  // Η βάση αρνήθηκε κάτι γιατί ο λογαριασμός μπήκε σε αναστολή (δες
+  // checkAccountOn στο data.ts): ξανακοιτάμε το προφίλ, και αν ισχύει, κλείνει
+  // ό,τι τρέχει και φαίνεται η οθόνη αναστολής.
+  useEffect(() => {
+    let checking = false;
+    const onCheck = () => {
+      if (checking || !supabase) return;
+      checking = true;
+      backend
+        .getMe()
+        .then((user) => user.suspended && accept(user))
+        .catch(() => undefined)
+        .finally(() => {
+          checking = false;
+        });
+    };
+    window.addEventListener("mila:account-check", onCheck);
+    return () => window.removeEventListener("mila:account-check", onCheck);
+  }, [accept]);
+
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 6000);
@@ -251,10 +290,11 @@ function App() {
       if (!data.session) return;
       try {
         const user = await backend.getMe();
-        if (alive) setMe(user);
+        if (alive) accept(user);
       } catch (error) {
         console.warn("Could not restore session:", error);
-        await supabase.auth.signOut();
+        // Μόνο αυτή η συσκευή: οι άλλες συνεδρίες του χρήστη δεν φταίνε.
+        await supabase.auth.signOut({ scope: "local" });
       }
     }
     void restoreSession().finally(() => {
@@ -283,11 +323,7 @@ function App() {
         try {
           if (event === "SIGNED_IN") await backend.ensureProfile();
           const user = await backend.getMe();
-          // Το onAuthStateChange πυροδοτείται και σε TOKEN_REFRESHED και όταν
-          // η καρτέλα ξαναπαίρνει focus. Χωρίς αυτόν τον έλεγχο, κάθε φορά
-          // έμπαινε νέο αντικείμενο στο state, άλλαζε η ταυτότητα του `me`
-          // και ξαναστηνόταν από την αρχή η σύνδεση realtime.
-          if (alive) setMe((prev) => (prev?.id === user.id ? prev : user));
+          if (alive) accept(user);
         } catch (error) {
           console.warn("Could not complete sign in:", error);
         }
@@ -550,11 +586,21 @@ function App() {
       disablePush().catch(() => undefined),
       new Promise((resolve) => setTimeout(resolve, 2500)),
     ]);
-    await supabase?.auth.signOut();
+    // Μόνο από αυτή τη συσκευή, όπως στο WhatsApp. Το «παντού» (προεπιλογή του
+    // Supabase) έβγαζε και το κινητό όταν έκανες αποσύνδεση στον υπολογιστή.
+    await supabase?.auth.signOut({ scope: "local" });
     location.reload();
   }
 
   if (!me) {
+    if (suspended?.suspended)
+      return (
+        <SuspendedScreen
+          suspension={suspended.suspended}
+          email={suspended.email || ""}
+          signOut={() => void signOut()}
+        />
+      );
     if (!sessionChecked && !recoveringPassword) return null;
     if (entry === "landing" && !recoveringPassword)
       return <Landing start={setEntry} />;
@@ -562,7 +608,7 @@ function App() {
       <Login
         // Νέο key = νέα φόρμα στη σωστή κατάσταση (εγγραφή ή σύνδεση).
         key={entry}
-        done={setMe}
+        done={accept}
         recoveringPassword={recoveringPassword}
         recoveryDone={() => setRecoveringPassword(false)}
         initialMode={entry === "signup" ? "signup" : "signin"}

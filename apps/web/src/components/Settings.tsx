@@ -503,6 +503,7 @@ function BlockedSection({
 // στην εφαρμογή, το app απορρίπτεται στον έλεγχο.
 function AccountSection({ email }: { email: string }) {
   const [confirming, setConfirming] = useState(false),
+    [leavingEverywhere, setLeavingEverywhere] = useState(false),
     [exporting, setExporting] = useState(false),
     [passwordOpen, setPasswordOpen] = useState(false),
     [newPassword, setNewPassword] = useState(""),
@@ -513,7 +514,7 @@ function AccountSection({ email }: { email: string }) {
   async function changePassword() {
     setError("");
     setNotice("");
-    if (newPassword.length < 6) {
+    if (newPassword.length < backend.MIN_PASSWORD) {
       setError(t("err.passwordShort"));
       return;
     }
@@ -538,16 +539,7 @@ function AccountSection({ email }: { email: string }) {
     setNotice("");
     setExporting(true);
     try {
-      const payload = await backend.exportMyData();
-      const blob = new Blob([JSON.stringify(payload, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `mila-data-${new Date().toISOString().slice(0, 10)}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
+      await downloadMyData();
     } catch (caught) {
       setError(messageOf(caught));
     } finally {
@@ -594,6 +586,10 @@ function AccountSection({ email }: { email: string }) {
           </button>
         </div>
       )}
+      <button className="secondary" type="button" onClick={() => setLeavingEverywhere(true)}>
+        <LogOut size={15} />
+        {t("account.signOutEverywhere")}
+      </button>
       <button className="secondary" onClick={exportData} disabled={exporting}>
         <Download size={15} />
         {exporting ? t("account.preparing") : t("account.download")}
@@ -610,11 +606,42 @@ function AccountSection({ email }: { email: string }) {
       {confirming && (
         <DeleteAccountDialog email={email} close={() => setConfirming(false)} />
       )}
+      {leavingEverywhere && (
+        <ConfirmDialog
+          title={t("account.signOutEverywhere")}
+          text={t("account.signOutEverywhereText")}
+          confirmLabel={t("nav.signOut")}
+          danger
+          onConfirm={async () => {
+            // Η κανονική «Αποσύνδεση» είναι μόνο για αυτή τη συσκευή· αυτή
+            // ακυρώνει κάθε συνεδρία του λογαριασμού.
+            await disablePush().catch(() => undefined);
+            const { error } = await supabase!.auth.signOut({ scope: "global" });
+            if (error) throw new Error(messageOf(error));
+            location.reload();
+          }}
+          close={() => setLeavingEverywhere(false)}
+        />
+      )}
     </section>
   );
 }
 
-function DeleteAccountDialog({
+/** Όλα τα δεδομένα του χρήστη σε αρχείο JSON. Και από την οθόνη αναστολής. */
+export async function downloadMyData(): Promise<void> {
+  const payload = await backend.exportMyData();
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `mila-data-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function DeleteAccountDialog({
   email,
   close,
 }: {
