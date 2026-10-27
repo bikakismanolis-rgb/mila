@@ -392,9 +392,13 @@ function NotificationsSection() {
 
   useEffect(() => {
     let alive = true;
-    pushState().then((s) => alive && setState(s));
+    const read = () => void pushState().then((s) => alive && setState(s));
+    read();
+    // Άνοιξαν από την κάρτα της λίστας ή μετά από κλήση (PushCard.tsx).
+    window.addEventListener("mila:push-changed", read);
     return () => {
       alive = false;
+      window.removeEventListener("mila:push-changed", read);
     };
   }, []);
 

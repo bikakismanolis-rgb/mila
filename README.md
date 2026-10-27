@@ -58,7 +58,8 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 - Reporting a message, a group or a person; the reporter may choose to forward the text, since nobody else can read it. Moderators get a content-free push, and accounts can be suspended (see `docs/MODERATION.md`)
 - End-to-end encrypted messages and attachments (see below)
 - Realtime messages, typing indicators, read receipts and unread badges
-- Photo and file attachments up to 15 MB
+- Photo, video and file attachments up to 50 MB; large videos are made smaller (about 720p) in the browser before sending
+- Messages, photos, voice notes and files that fail to send stay in the chat as "not sent", retry by themselves when the connection is back, and are never sent twice
 - Rate limits on messages, new conversations, email lookups, sign-ups, uploads, reactions and reports
 - Consent-based CSV and vCard contact matching using email hashes
 - Privacy settings and a responsive mobile and desktop UI
@@ -66,7 +67,7 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 ## Tests
 
 ```bash
-npm test                              # encryption, call handshake sealing, Web Push (RFC 8291), TURN credentials
+npm test                              # encryption, call handshake sealing, Web Push (RFC 8291), TURN credentials, attachment size limits
 supabase/tests/run.sh                 # every migration on a fresh Postgres, then RLS, limit and call tests
 npm run e2e                           # two and three real browsers against a local Supabase: chat, voice, calls
 ```
@@ -112,6 +113,7 @@ update public.rate_limit_rules set max_count = 50 where action = 'message' and w
 | `contact_import` / `contact_match` | 5 files, 1000 addresses a day |
 | `signup` (whole app) | 60 an hour, 500 a day |
 | `upload_media` / `upload_avatar` | 60 an hour and 300 a day / 20 a day |
+| `upload_media_mb` (total size of attachments) | 300 MB an hour, 1000 MB a day |
 | `call` | 30 an hour, 200 a day |
 | `reaction`, `report`, `group_create`, `group_add`, `device_register`, `avatar_change` | see the migration |
 

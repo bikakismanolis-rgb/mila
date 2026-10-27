@@ -40,6 +40,7 @@ import { bootstrapNative } from "./native";
 import { t, translateError } from "./i18n";
 import { listTime } from "./format";
 import { disablePush, refreshPushOwner } from "./push";
+import * as outbox from "./outbox";
 import { Empty } from "./components/common";
 import { Login } from "./components/Login";
 import { Landing } from "./components/Landing";
@@ -55,6 +56,7 @@ import { CallIcon, CallsList, describeCall, unseenMissed } from "./components/Ca
 import { NewGroupDialog } from "./components/Groups";
 import { InviteDialog } from "./components/Invite";
 import { SuspendedScreen } from "./components/Suspended";
+import { PushAfterCall, PushCard } from "./components/PushCard";
 
 const messageOf = (caught: unknown) =>
   translateError(caught instanceof Error ? caught.message : String(caught)) ||
@@ -589,6 +591,8 @@ function App() {
     // Μόνο από αυτή τη συσκευή, όπως στο WhatsApp. Το «παντού» (προεπιλογή του
     // Supabase) έβγαζε και το κινητό όταν έκανες αποσύνδεση στον υπολογιστή.
     await supabase?.auth.signOut({ scope: "local" });
+    // Ό,τι δεν είχε φύγει ήταν του λογαριασμού που φεύγει.
+    outbox.clear();
     location.reload();
   }
 
@@ -883,6 +887,7 @@ function App() {
           />
         ) : (
           <div className="chatlist">
+            {!term && !showArchived && <PushCard notify={notify} />}
             {!term && !showArchived && archivedChats.length > 0 && (
               <button className="archived-row" onClick={() => setShowArchived(true)}>
                 <div className="avatar archived-icon">
@@ -1017,6 +1022,7 @@ function App() {
       </section>
 
       <CallOverlay me={me} chats={chats} />
+      <PushAfterCall meId={me.id} notify={notify} />
 
       {invite !== null && (
         <InviteDialog me={me} initial={invite} close={() => setInvite(null)} />

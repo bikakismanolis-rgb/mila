@@ -406,7 +406,7 @@ const en = {
   "err.alreadyDeleted": "This account has already been deleted.",
   "err.search": "Search is unavailable right now.",
   "err.matchContacts": "Could not match your contacts.",
-  "err.fileTooLarge": "That file is larger than the 15 MB limit.",
+  "err.fileTooLarge": "That file is larger than the 50 MB limit.",
   "err.upload": "Upload failed.",
   "err.loadChats": "Could not load your conversations.",
   "err.loadMessages": "Could not load these messages.",
@@ -661,6 +661,27 @@ const en = {
     "You couldn't answer: another app is using the microphone. Close it, then call them back.",
   "call.answerMediaFailed":
     "You couldn't answer: the microphone didn't open. Call them back to try again.",
+
+  // --- messaging ---
+  "outbox.sending": "Sending…",
+  "outbox.failed": "Not sent. Tap to try again.",
+  "outbox.retry": "Try again",
+  "outbox.delete": "Delete",
+  "pushCard.title": "Turn on notifications",
+  "pushCard.text": "Know straight away when a message or a call comes in, even when Mila is closed.",
+  "pushCard.enable": "Turn on",
+  "pushCard.dismiss": "Not now",
+  "pushCard.iosTitle": "Notifications on iPhone and iPad",
+  "pushCard.iosText":
+    "Add Mila to your Home Screen and open it from there: tap Share, then “Add to Home Screen”.",
+  "pushCard.done": "Notifications are on.",
+  "pushAsk.title": "Don't miss a call",
+  "pushAsk.text":
+    "Turn on notifications so you hear it when someone calls you, even when Mila is closed.",
+  "squeeze.note": "Large video: it will be made smaller (720p) before it's sent.",
+  "squeeze.working": "Making the video smaller… {p}%",
+  "squeeze.workingN": "Making video {i} of {n} smaller… {p}%",
+  "squeeze.keepOpen": "Keep Mila open until it's done.",
 } as const;
 
 export type TKey = keyof typeof en;
@@ -1010,7 +1031,7 @@ const el: Record<TKey, string> = {
   "err.alreadyDeleted": "Αυτός ο λογαριασμός έχει ήδη διαγραφεί.",
   "err.search": "Η αναζήτηση δεν είναι διαθέσιμη αυτή τη στιγμή.",
   "err.matchContacts": "Δεν έγινε η αντιστοίχιση των επαφών σου.",
-  "err.fileTooLarge": "Το αρχείο ξεπερνά το όριο των 15 MB.",
+  "err.fileTooLarge": "Το αρχείο ξεπερνά το όριο των 50 MB.",
   "err.upload": "Το ανέβασμα απέτυχε.",
   "err.loadChats": "Δεν φόρτωσαν οι συνομιλίες σου.",
   "err.loadMessages": "Δεν φόρτωσαν τα μηνύματα.",
@@ -1265,6 +1286,27 @@ const el: Record<TKey, string> = {
     "Δεν μπόρεσες να απαντήσεις: άλλη εφαρμογή χρησιμοποιεί το μικρόφωνο. Κλείσ' την και κάλεσε πίσω.",
   "call.answerMediaFailed":
     "Δεν μπόρεσες να απαντήσεις: το μικρόφωνο δεν άνοιξε. Κάλεσε πίσω για να ξαναδοκιμάσεις.",
+
+  // --- messaging ---
+  "outbox.sending": "Στέλνεται…",
+  "outbox.failed": "Δεν στάλθηκε. Πάτα για να ξαναδοκιμάσεις.",
+  "outbox.retry": "Δοκίμασε ξανά",
+  "outbox.delete": "Διαγραφή",
+  "pushCard.title": "Άνοιξε τις ειδοποιήσεις",
+  "pushCard.text": "Μαθαίνεις αμέσως για νέο μήνυμα ή κλήση, ακόμα κι όταν το Mila είναι κλειστό.",
+  "pushCard.enable": "Άνοιγμα",
+  "pushCard.dismiss": "Όχι τώρα",
+  "pushCard.iosTitle": "Ειδοποιήσεις σε iPhone και iPad",
+  "pushCard.iosText":
+    "Βάλε το Mila στην αρχική οθόνη και άνοιξέ το από εκεί: Κοινή χρήση → «Προσθήκη στην οθόνη Αφετηρίας».",
+  "pushCard.done": "Οι ειδοποιήσεις άνοιξαν.",
+  "pushAsk.title": "Μη χάνεις κλήσεις",
+  "pushAsk.text":
+    "Άνοιξε τις ειδοποιήσεις, για να ακούς όταν σε καλούν, ακόμα κι όταν το Mila είναι κλειστό.",
+  "squeeze.note": "Μεγάλο βίντεο: θα μικρύνει (720p) πριν σταλεί.",
+  "squeeze.working": "Το βίντεο μικραίνει… {p}%",
+  "squeeze.workingN": "Μικραίνει το βίντεο {i} από {n}… {p}%",
+  "squeeze.keepOpen": "Κράτα το Mila ανοιχτό μέχρι να τελειώσει.",
 };
 
 const dictionaries: Record<Lang, Record<TKey, string>> = { en, el };
