@@ -1547,8 +1547,10 @@ export async function answer(callId: string, video: boolean): Promise<void> {
     // ήδη γίνει, όπως έπρεπε.
     if (s.ended()) return;
     const text = caught instanceof Error ? caught.message : "";
-    const elsewhere = /another device/i.test(text);
-    const over = /has ended/i.test(text);
+    // Το data.ts έχει ήδη μεταφράσει το λάθος της βάσης (translateError):
+    // συγκρίνω με τα ίδια κείμενα, ώστε να πιάνει σε κάθε γλώσσα.
+    const elsewhere = text === t("call.answeredElsewhere");
+    const over = text === t("call.alreadyEnded");
     s.notice = elsewhere
       ? t("call.answeredElsewhere")
       : over
