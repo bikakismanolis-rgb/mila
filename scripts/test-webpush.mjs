@@ -7,6 +7,8 @@
 // 2. Κύκλος με τυχαία κλειδιά: κρυπτογραφούμε όπως ο server και
 //    αποκρυπτογραφούμε όπως θα έκανε ο browser, με ανεξάρτητο κώδικα.
 // 3. Η υπογραφή VAPID επαληθεύεται με το δημόσιο κλειδί.
+// 4. Η «Νέα αναφορά» θέλει το μυστικό του webhook και δεν κουβαλάει τίποτα
+//    από την αναφορά (ψεύτικη βάση και υπηρεσία push).
 import {
   b64urlDecode,
   b64urlEncode,
@@ -98,6 +100,55 @@ check("Edge/Windows", endpointAllowed("https://db5p.notify.windows.com/w/?token=
 check("αυθαίρετη διεύθυνση απορρίπτεται", !endpointAllowed("https://evil.example.com/fcm.googleapis.com"));
 check("μοιάζει-αλλά-δεν-είναι απορρίπτεται", !endpointAllowed("https://fcm.googleapis.com.evil.example/x"));
 check("http απορρίπτεται", !endpointAllowed("http://fcm.googleapis.com/x"));
+
+console.log("[αναφορές: «Νέα αναφορά» στους συντονιστές]");
+{
+  // Ψεύτικη βάση και ψεύτικη υπηρεσία push (fetch). Ο handler διαβάζει τις
+  // μεταβλητές της Supabase μόνο όταν τρέχει, οπότε φτάνει να υπάρχουν τώρα.
+  const vars = { SUPABASE_URL: "https://db.example.test", SUPABASE_SERVICE_ROLE_KEY: "service-key" };
+  globalThis.Deno = { env: { get: (name) => vars[name] } };
+  const { handler } = await import("../supabase/functions/push/index.ts");
+  const vapid = await generateVapid();
+  const ua = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const uaPublic = new Uint8Array(await crypto.subtle.exportKey("raw", ua.publicKey));
+  const uaD = (await crypto.subtle.exportKey("jwk", ua.privateKey)).d;
+  const auth = crypto.getRandomValues(new Uint8Array(16));
+  const subscription = { id: "sub-1", endpoint: "https://fcm.googleapis.com/fcm/send/moderator", p256dh: b64urlEncode(uaPublic), auth: b64urlEncode(auth) };
+  let asked = [];
+  const sent = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = String(url);
+    if (target.startsWith(`${vars.SUPABASE_URL}/rest/v1/rpc/`)) {
+      const fn = target.split("/").pop();
+      asked.push({ fn, args: JSON.parse(init.body || "{}") });
+      if (fn === "push_config_get")
+        return Response.json({ vapid_public: vapid.publicKey, vapid_private: vapid.privateJwk, webhook_secret: "hook-secret", subject: "mailto:test@example.test" });
+      if (fn === "push_report_targets") return Response.json({ payload: { type: "report" }, subscriptions: [subscription] });
+      return new Response("", { status: 404 });
+    }
+    if (target === subscription.endpoint) {
+      sent.push({ headers: init.headers, body: new Uint8Array(init.body) });
+      return new Response("", { status: 201 });
+    }
+    throw new Error(`unexpected fetch ${target}`);
+  };
+  const call = (body, secret) =>
+    handler(new Request("https://fn.example.test/push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-mila-secret": secret },
+      body: JSON.stringify(body),
+    }));
+
+  const refused = await call({ action: "report", report_id: "r-1" }, "wrong");
+  check("χωρίς το μυστικό του webhook: 403, τίποτα δεν φεύγει", refused.status === 403 && sent.length === 0);
+  asked = [];
+  const ok = await call({ action: "report", report_id: "r-1" }, "hook-secret");
+  check("με το μυστικό: ρωτάει τη βάση για ΑΥΤΗ την αναφορά",
+    ok.status === 200 && asked.some((a) => a.fn === "push_report_targets" && a.args.p_report === "r-1"));
+  const plain = sent.length ? JSON.parse(await decryptAsBrowser(sent[0].body, uaPublic, uaD, auth)) : null;
+  check("φτάνει στον συντονιστή χωρίς ονόματα και κείμενο", JSON.stringify(plain) === '{"type":"report"}', JSON.stringify(plain));
+  check("όλες οι αναφορές έχουν το ίδιο topic", sent[0]?.headers?.Topic === "mila-report");
+}
 
 console.log(failed ? `\nFAILED: ${failed}` : "\nALL OK");
 process.exit(failed ? 1 : 0);
