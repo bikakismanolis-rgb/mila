@@ -132,7 +132,10 @@ async function attempt(id: string): Promise<boolean> {
       state: "failed",
       error: caught instanceof Error ? caught.message : t("err.send"),
       retry: failure.retry !== false,
-      unsure: Boolean(failure.unsure),
+      // Μία προσπάθεια που δεν έφτασε καν στη βάση (π.χ. χωρίς δίκτυο) δεν
+      // λέει τίποτα για μια προηγούμενη που ίσως έφτασε: το «δεν ξέρουμε»
+      // σβήνει μόνο όταν το μήνυμα φύγει.
+      unsure: item.unsure || Boolean(failure.unsure),
     });
     return false;
   }
