@@ -55,6 +55,7 @@ import { CallOverlay } from "./components/Call";
 import { CallIcon, CallsList, describeCall, unseenMissed } from "./components/CallsTab";
 import { NewGroupDialog } from "./components/Groups";
 import { InviteDialog } from "./components/Invite";
+import { PushAfterCall, PushCard } from "./components/PushCard";
 
 const messageOf = (caught: unknown) =>
   translateError(caught instanceof Error ? caught.message : String(caught)) ||
@@ -840,6 +841,7 @@ function App() {
           />
         ) : (
           <div className="chatlist">
+            {!term && !showArchived && <PushCard notify={notify} />}
             {!term && !showArchived && archivedChats.length > 0 && (
               <button className="archived-row" onClick={() => setShowArchived(true)}>
                 <div className="avatar archived-icon">
@@ -974,6 +976,7 @@ function App() {
       </section>
 
       <CallOverlay me={me} chats={chats} />
+      <PushAfterCall meId={me.id} notify={notify} />
 
       {invite !== null && (
         <InviteDialog me={me} initial={invite} close={() => setInvite(null)} />

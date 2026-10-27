@@ -1,5 +1,5 @@
 // Photos with caption, viewer, video thumbnail, forward, mute/pin/archive, delivered ticks,
-// video compression, and sending while offline (outbox).
+// the notification card, video compression, and sending while offline (outbox).
 import { chromium } from "playwright-core";
 import zlib from "node:zlib";
 const BASE = process.env.E2E_BASE || "http://localhost:5173";
@@ -425,6 +425,28 @@ const mine = await ann.evaluate(
   () => [...document.querySelectorAll(".bubble.own p")].filter((p) => p.textContent === "Μόνο μία φορά").length,
 );
 check("the sender sees it once too", mine === 1, String(mine));
+
+// --- Notification card (the browser has not asked yet) -----------------------
+// Χωρίς λίστα permissions: με λίστα, το Chromium απαντάει «όχι» σε ό,τι λείπει
+// από αυτήν (άρα και στις ειδοποιήσεις), και η κάρτα σωστά δεν φαίνεται.
+{
+  const context = await browser.newContext({ viewport: { width: 1200, height: 800 }, locale: "el-GR" });
+  const page = await context.newPage();
+  await page.goto(`${BASE}/?login`);
+  await page.fill('input[type="email"]', "cat@test.local");
+  await page.fill('input[type="password"]', "secret123");
+  await page.click('button[type="submit"]');
+  await page.waitForSelector(".chatlist > button", { timeout: 20000 });
+  check("the chat list offers to turn on notifications", (await page.locator(".chatlist .push-card").count()) === 1);
+  await page.screenshot({ path: `${SHOTS}/push-card.png` });
+  await page.click(".push-card-close");
+  check("the card can be dismissed", (await page.locator(".push-card").count()) === 0);
+  await page.reload();
+  await page.waitForSelector(".chatlist > button", { timeout: 20000 });
+  check("and stays dismissed after a reload", (await page.locator(".push-card").count()) === 0);
+  check("no card once the browser has said no", (await cat.locator(".push-card").count()) === 0);
+  await context.close();
+}
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL MEDIA CHECKS PASSED");
 await browser.close();

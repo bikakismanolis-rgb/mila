@@ -24,6 +24,12 @@ export const isMobile =
   /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
   (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 
+/** iPhone ή iPad (το iPad δηλώνεται κι αυτό «Macintosh», αλλά έχει αφή).
+ *  Εκεί οι ειδοποιήσεις δουλεύουν μόνο αν το Mila ανοίξει από την αρχική οθόνη. */
+export const isIOS =
+  /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+  (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
 /** Εγκατεστημένο PWA (προστέθηκε στην αρχική οθόνη), όχι απλό tab. */
 export const isStandalone =
   window.matchMedia("(display-mode: standalone)").matches ||

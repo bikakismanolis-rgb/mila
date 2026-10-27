@@ -24,6 +24,9 @@ const supported =
   "PushManager" in window &&
   "Notification" in window;
 
+/** Μπορεί αυτή η συσκευή να πάρει ειδοποιήσεις; (Χωρίς να ρωτήσει τον χρήστη.) */
+export const pushSupported = supported;
+
 /** Ο service worker, ή null αν δεν υπάρχει (π.χ. dev build, όπου δεν δηλώνεται).
  *  Το navigator.serviceWorker.ready δεν τελειώνει ΠΟΤΕ αν δεν υπάρχει worker,
  *  γι' αυτό μπαίνει όριο χρόνου. */
