@@ -171,7 +171,9 @@ function App() {
     // Διαβάζεται ΜΙΑ φορά (το useRef θα το ξανάτρεχε σε κάθε render).
     [callFromUrl] = useState(() => takeCallFromUrl()),
     pendingCall = useRef(callFromUrl),
-    lastSeenMessages = useRef<Map<string, string> | null>(null);
+    lastSeenMessages = useRef<Map<string, string> | null>(null),
+    // Ο λογαριασμός που έτρεξε σε αυτή τη σελίδα (δες accept).
+    account = useRef<string | null>(null);
 
   activeIdRef.current = activeId;
 
@@ -182,6 +184,15 @@ function App() {
   // ξαναπαίρνει focus: ίδιος χρήστης = ίδιο αντικείμενο, αλλιώς θα ξαναστηνόταν
   // από την αρχή η σύνδεση realtime.
   const accept = useCallback((user: User) => {
+    // Άλλος λογαριασμός από αυτόν που έτρεχε εδώ (μπήκε από άλλη καρτέλα του
+    // ίδιου browser): ό,τι περίμενε να φύγει ήταν του προηγούμενου, και το
+    // data.ts κρατά ακόμα στη μνήμη τα δικά του. Καθαρή αρχή.
+    if (account.current && account.current !== user.id) {
+      outbox.clear();
+      location.reload();
+      return;
+    }
+    account.current = user.id;
     if (user.suspended) {
       setSuspended(user);
       setMe(null);
@@ -312,6 +323,14 @@ function App() {
     if (!client) return;
     let alive = true;
     const { data } = client.auth.onAuthStateChange((event, session) => {
+      // Αποσύνδεση, και από άλλη καρτέλα, ή μπήκε άλλος λογαριασμός: ό,τι
+      // περίμενε να φύγει ήταν του προηγούμενου. Αμέσως, πριν προλάβει να
+      // ξαναδοκιμάσει να το στείλει με τη νέα συνεδρία.
+      if (
+        (!session && event === "SIGNED_OUT") ||
+        (session && account.current && session.user.id !== account.current)
+      )
+        outbox.clear();
       if (!session) return;
       if (event === "PASSWORD_RECOVERY") {
         sessionStorage.setItem("mila:password-recovery", "1");
