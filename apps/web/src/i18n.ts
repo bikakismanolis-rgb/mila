@@ -406,7 +406,7 @@ const en = {
   "err.alreadyDeleted": "This account has already been deleted.",
   "err.search": "Search is unavailable right now.",
   "err.matchContacts": "Could not match your contacts.",
-  "err.fileTooLarge": "That file is larger than the 15 MB limit.",
+  "err.fileTooLarge": "That file is larger than the 50 MB limit.",
   "err.upload": "Upload failed.",
   "err.loadChats": "Could not load your conversations.",
   "err.loadMessages": "Could not load these messages.",
@@ -617,6 +617,11 @@ const en = {
 
   "err.editWindow": "Messages can only be edited for 15 minutes after sending.",
   "err.pinLimit": "You can pin up to 3 chats.",
+  // --- messaging ---
+  "squeeze.note": "Large video: it will be made smaller (720p) before it's sent.",
+  "squeeze.working": "Making the video smaller… {p}%",
+  "squeeze.workingN": "Making video {i} of {n} smaller… {p}%",
+  "squeeze.keepOpen": "Keep Mila open until it's done.",
 } as const;
 
 export type TKey = keyof typeof en;
@@ -966,7 +971,7 @@ const el: Record<TKey, string> = {
   "err.alreadyDeleted": "Αυτός ο λογαριασμός έχει ήδη διαγραφεί.",
   "err.search": "Η αναζήτηση δεν είναι διαθέσιμη αυτή τη στιγμή.",
   "err.matchContacts": "Δεν έγινε η αντιστοίχιση των επαφών σου.",
-  "err.fileTooLarge": "Το αρχείο ξεπερνά το όριο των 15 MB.",
+  "err.fileTooLarge": "Το αρχείο ξεπερνά το όριο των 50 MB.",
   "err.upload": "Το ανέβασμα απέτυχε.",
   "err.loadChats": "Δεν φόρτωσαν οι συνομιλίες σου.",
   "err.loadMessages": "Δεν φόρτωσαν τα μηνύματα.",
@@ -1177,6 +1182,11 @@ const el: Record<TKey, string> = {
 
   "err.editWindow": "Ένα μήνυμα αλλάζει μόνο μέσα σε 15 λεπτά από την αποστολή.",
   "err.pinLimit": "Μπορείς να καρφιτσώσεις έως 3 συνομιλίες.",
+  // --- messaging ---
+  "squeeze.note": "Μεγάλο βίντεο: θα μικρύνει (720p) πριν σταλεί.",
+  "squeeze.working": "Το βίντεο μικραίνει… {p}%",
+  "squeeze.workingN": "Μικραίνει το βίντεο {i} από {n}… {p}%",
+  "squeeze.keepOpen": "Κράτα το Mila ανοιχτό μέχρι να τελειώσει.",
 };
 
 const dictionaries: Record<Lang, Record<TKey, string>> = { en, el };

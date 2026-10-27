@@ -10,6 +10,7 @@ import { t, translateError } from "./i18n";
 import type { TKey } from "./i18n";
 import * as e2ee from "./e2ee";
 import type { DeviceKeys, E2ee, MessagePlain, Recipient } from "./e2ee";
+import { MAX_FILE } from "./limits";
 
 export type Privacy = {
   discover: "everyone" | "contacts" | "nobody";
@@ -182,7 +183,6 @@ export type Device = {
 
 const BUCKET = "message-media";
 const AVATARS = "avatars";
-const MAX_UPLOAD = 15 * 1024 * 1024;
 /** Πόσα μηνύματα έρχονται ανά σελίδα. Ίδιο με το default του list_messages. */
 export const PAGE_SIZE = 50;
 
@@ -959,7 +959,7 @@ export async function uploadAttachment(
   conversationId: string,
   info: MediaInfo = {},
 ): Promise<NewAttachment> {
-  if (file.size > MAX_UPLOAD) throw new Error(t("err.fileTooLarge"));
+  if (file.size > MAX_FILE) throw new Error(t("err.fileTooLarge"));
 
   const uid = await currentUserId();
   const sealed = await e2ee.encryptFile(await file.arrayBuffer());
@@ -977,7 +977,9 @@ export async function uploadAttachment(
     throw new Error(
       /row-level security/i.test(error.message)
         ? t("err.limitUploads")
-        : translateError(error.message) || t("err.upload"),
+        : /maximum allowed size|too large/i.test(error.message)
+          ? t("err.fileTooLarge")
+          : translateError(error.message) || t("err.upload"),
     );
 
   return {

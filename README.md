@@ -57,7 +57,7 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 - One-to-one and group conversations, message requests, accept and reject, blocking and reporting
 - End-to-end encrypted messages and attachments (see below)
 - Realtime messages, typing indicators, read receipts and unread badges
-- Photo and file attachments up to 15 MB
+- Photo, video and file attachments up to 50 MB; large videos are made smaller (about 720p) in the browser before sending
 - Rate limits on messages, new conversations, email lookups, sign-ups, uploads, reactions and reports
 - Consent-based CSV and vCard contact matching using email hashes
 - Privacy settings and a responsive mobile and desktop UI
@@ -65,7 +65,7 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 ## Tests
 
 ```bash
-npm test                              # encryption, call handshake sealing, Web Push (RFC 8291), TURN credentials
+npm test                              # encryption, call handshake sealing, Web Push (RFC 8291), TURN credentials, attachment size limits
 supabase/tests/run.sh                 # every migration on a fresh Postgres, then RLS, limit and call tests
 npm run e2e                           # two and three real browsers against a local Supabase: chat, voice, calls
 ```

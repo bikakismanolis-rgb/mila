@@ -1,4 +1,5 @@
-// Photos with caption, viewer, video thumbnail, forward, mute/pin/archive, delivered ticks.
+// Photos with caption, viewer, video thumbnail, forward, mute/pin/archive, delivered ticks,
+// video compression.
 import { chromium } from "playwright-core";
 import zlib from "node:zlib";
 const BASE = process.env.E2E_BASE || "http://localhost:5173";
@@ -82,7 +83,12 @@ for (const [x, y] of [[A, B], [A, C]]) {
 const browser = await chromium.launch({
   executablePath: CHROME,
   headless: true,
-  args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
+  args: [
+    "--use-fake-ui-for-media-stream",
+    "--use-fake-device-for-media-stream",
+    // Η συμπίεση βίντεο παίζει το βίντεο με ήχο· στην εφαρμογή ξεκινάει από πάτημα.
+    "--autoplay-policy=no-user-gesture-required",
+  ],
 });
 async function user(email, name) {
   const context = await browser.newContext({
@@ -181,6 +187,39 @@ const playable = await ben.waitForFunction(
 check("video plays in the viewer", playable);
 await ben.keyboard.press("Escape");
 
+// --- Video compression (canvas + MediaRecorder), straight from the module -----
+const squeezed = await ann.evaluate(async (b64) => {
+  const media = await import("/src/media.ts");
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const file = new File([bytes], "clip.webm", { type: "video/webm" });
+  const batch = media.prepareSqueeze([file, file]);
+  if (!batch) return { error: "unsupported" };
+  let progress = 0;
+  const out = await batch.run(0, (f) => (progress = f), new AbortController().signal);
+  // Ακύρωση στη μέση: τίποτα δεν βγαίνει.
+  const stop = new AbortController();
+  setTimeout(() => stop.abort(), 300);
+  const cancelled = await batch.run(1, () => undefined, stop.signal);
+  batch.dispose();
+  if (!out) return { error: "no result", progress };
+  const url = URL.createObjectURL(out.file);
+  const video = document.createElement("video");
+  video.muted = true;
+  video.src = url;
+  const playable = await new Promise((resolve) => {
+    video.onloadeddata = () => resolve(true);
+    video.onerror = () => resolve(false);
+    setTimeout(() => resolve(false), 5000);
+  });
+  return { size: out.file.size, type: out.file.type, width: out.width, height: out.height, progress, playable, cancelled: cancelled === null };
+}, videoB64);
+check(
+  "a video can be re-encoded in the browser and still plays",
+  squeezed.playable && squeezed.progress === 1 && squeezed.width === 320 && squeezed.size > 0,
+  JSON.stringify(squeezed),
+);
+check("cancelling the compression gives nothing back", squeezed.cancelled === true, JSON.stringify(squeezed));
+
 // --- Forward the photo to Cat -------------------------------------------------
 await ben.waitForTimeout(500);
 // Ben forwards only to chats he has; give him a chat with Cat first.
@@ -242,6 +281,71 @@ await ann.click(".emoji-grid button >> nth=0");
 const value = await ann.inputValue(".conversation-inner textarea");
 check("emoji picker inserts emoji", value.length > 0, value);
 await ann.screenshot({ path: `${SHOTS}/emoji.png` });
+
+// --- A large, heavy video is made smaller before it is sent --------------------
+// ~8'' θορύβου σε 1280x720, γραμμένα με ~40 Mbps: πάνω από 25 MB και «βαρύ».
+await ann.fill(".conversation-inner textarea", "");
+const videosBefore = await ben.locator(".media-open.video").count();
+const bigSize = await ann.evaluate(async () => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1280;
+  canvas.height = 720;
+  const ctx = canvas.getContext("2d");
+  const rec = new MediaRecorder(canvas.captureStream(30), {
+    mimeType: "video/webm;codecs=vp8",
+    videoBitsPerSecond: 60_000_000,
+  });
+  const chunks = [];
+  rec.ondataavailable = (e) => chunks.push(e.data);
+  rec.start(500);
+  const img = ctx.createImageData(1280, 720);
+  const buf = new Uint8Array(img.data.buffer);
+  const end = performance.now() + 8000;
+  while (performance.now() < end) {
+    for (let o = 0; o < buf.length; o += 65536) crypto.getRandomValues(buf.subarray(o, Math.min(buf.length, o + 65536)));
+    for (let i = 3; i < buf.length; i += 4) buf[i] = 255;
+    ctx.putImageData(img, 0, 0);
+    await new Promise((r) => setTimeout(r, 33));
+  }
+  rec.stop();
+  await new Promise((r) => (rec.onstop = r));
+  const file = new File(chunks, "noise.webm", { type: "video/webm" });
+  // Σαν να το διάλεξε από τη συλλογή.
+  const input = document.querySelector('.composer-row input[type="file"][multiple][accept^="image"]');
+  const picked = new DataTransfer();
+  picked.items.add(file);
+  input.files = picked.files;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  return file.size;
+});
+const marked = await ann
+  .waitForSelector('.send-preview .hint:has-text("μικρύνει")', { timeout: 20000 })
+  .then(() => true)
+  .catch(() => false);
+check(`a heavy ${(bigSize / 1048576).toFixed(0)} MB video is marked to be made smaller`, marked && bigSize > 25 * 1048576);
+await ann.click(".send-caption .send");
+await ann.waitForSelector(".squeeze-progress", { timeout: 10000 });
+check("compression shows its progress", (await ann.locator(".squeeze-progress progress").count()) === 1);
+await ann.screenshot({ path: `${SHOTS}/video-squeeze.png` });
+await ann.click('.squeeze-progress button:has-text("Άκυρο")');
+await ann.waitForSelector(".send-caption .send:not([disabled])", { timeout: 10000 });
+check("cancel goes back to the dialog without sending", (await ann.locator(".modal .send-caption").count()) === 1);
+await ann.click(".send-caption .send");
+await ann.waitForSelector(".squeeze-progress", { timeout: 10000 });
+await ann.waitForSelector(".squeeze-progress", { state: "detached", timeout: 90000 });
+const bigArrived = await ben
+  .waitForFunction((n) => document.querySelectorAll(".media-open.video").length > n, videosBefore, { timeout: 60000 })
+  .then(() => true)
+  .catch(() => false);
+check("the smaller video arrives", bigArrived);
+const annBen = (await rpc(A, "list_conversations", {})).find((c) => c.others.some((u) => u.id === B.id));
+const latest = await rpc(A, "list_messages", { conversation: annBen.id, before_message: null, page_size: 5 });
+const sentSize = latest.filter((m) => m.attachment).pop()?.attachment?.size || 0;
+check(
+  `and it is much smaller than the original (${(sentSize / 1048576).toFixed(1)} MB)`,
+  sentSize > 0 && sentSize < bigSize / 4,
+  String(sentSize),
+);
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL MEDIA CHECKS PASSED");
 await browser.close();

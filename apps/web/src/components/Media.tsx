@@ -16,11 +16,11 @@ import * as backend from "../data";
 import type { Chat, MediaInfo, Msg } from "../data";
 import { t } from "../i18n";
 import { dayLabel, fileSize, time } from "../format";
-import { prepareVideo, preparePhoto } from "../media";
+import { canSqueezeVideo, prepareSqueeze, prepareVideo, preparePhoto } from "../media";
+import { fitsUpload, shouldSqueeze, videoPlan } from "../limits";
 import { Modal } from "./common";
 import { chatAvatar, chatTitle } from "./Conversation";
 
-const MAX_FILE = 15 * 1024 * 1024;
 const MAX_FILES = 10;
 
 export const isVisual = (mime?: string) =>
@@ -168,9 +168,17 @@ export function MediaViewer({
 
 export type Prepared = { file: File; info: MediaInfo };
 
-type Item = { source: File; prepared: Prepared | null; preview: string; error: string };
+type Item = {
+  source: File;
+  prepared: Prepared | null;
+  preview: string;
+  error: string;
+  /** Μεγάλο βίντεο που θα μικρύνει πριν φύγει (media.ts, prepareSqueeze). */
+  squeeze: boolean;
+};
 
-/** Οι φωτογραφίες μικραίνουν, τα βίντεο παίρνουν μικρογραφία. Μετά φεύγουν. */
+/** Οι φωτογραφίες μικραίνουν, τα βίντεο παίρνουν μικρογραφία (και τα μεγάλα
+ *  συμπιέζονται, όταν πατηθεί η αποστολή). Μετά φεύγουν. */
 export function SendFilesDialog({
   files,
   initialCaption,
@@ -188,10 +196,17 @@ export function SendFilesDialog({
       prepared: null,
       preview: "",
       error: "",
+      squeeze: false,
     })),
   );
   const [caption, setCaption] = useState(initialCaption),
-    [active, setActive] = useState(0);
+    [active, setActive] = useState(0),
+    // Όσο μικραίνει κάποιο βίντεο: ποιο (i από n) και πόσο (0-100).
+    [squeezing, setSqueezing] = useState<{ i: number; n: number; p: number } | null>(null);
+  const abort = useRef<AbortController | null>(null);
+
+  // Κλείνει το παράθυρο (π.χ. άλλαξε συνομιλία): η συμπίεση σταματά.
+  useEffect(() => () => abort.current?.abort(), []);
 
   useEffect(() => {
     let alive = true;
@@ -208,10 +223,18 @@ export function SendFilesDialog({
           preview = URL.createObjectURL(prepared.file);
           urls.push(preview);
         } else if (prepared.info.poster) preview = prepared.info.poster;
-        const error = prepared.file.size > MAX_FILE ? t("err.fileTooLarge") : "";
+        const { duration, width, height } = prepared.info;
+        const squeeze =
+          source.type.startsWith("video/") &&
+          canSqueezeVideo &&
+          shouldSqueeze(prepared.file.size, duration) &&
+          videoPlan(duration || 0, width || 0, height || 0) !== null;
+        const error = !fitsUpload(prepared.file.size) && !squeeze ? t("err.fileTooLarge") : "";
         if (alive)
           setItems((list) =>
-            list.map((item, j) => (j === i ? { ...item, prepared, preview, error } : item)),
+            list.map((item, j) =>
+              j === i ? { ...item, prepared, preview, error, squeeze } : item,
+            ),
           );
       }),
     );
@@ -221,11 +244,84 @@ export function SendFilesDialog({
     };
   }, [files]);
 
-  const ready = items.every((i) => i.prepared) && items.some((i) => !i.error);
+  const ready =
+    !squeezing && items.every((i) => i.prepared) && items.some((i) => !i.error);
   const shown = items[active] || items[0];
 
+  function submit() {
+    if (!ready) return;
+    const chosen = items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => item.prepared && !item.error);
+    const targets = chosen.filter(({ item }) => item.squeeze);
+    if (!targets.length) {
+      send(chosen.map(({ item }) => item.prepared!), caption.trim());
+      return;
+    }
+    // Μέσα στο πάτημα, πριν από κάθε await (δες prepareSqueeze).
+    const batch = prepareSqueeze(targets.map(({ item }) => item.prepared!.file));
+    void squeezeAndSend(chosen, targets, batch);
+  }
+
+  async function squeezeAndSend(
+    chosen: { item: Item; index: number }[],
+    targets: { item: Item; index: number }[],
+    batch: ReturnType<typeof prepareSqueeze>,
+  ) {
+    const controller = new AbortController();
+    abort.current = controller;
+    const done = new Map<number, Prepared | null>();
+    try {
+      for (let k = 0; k < targets.length; k++) {
+        const { item, index } = targets[k];
+        setSqueezing({ i: k + 1, n: targets.length, p: 0 });
+        const out = batch
+          ? await batch.run(
+              k,
+              (fraction) => {
+                const p = Math.floor(fraction * 100);
+                setSqueezing((s) => (s && s.p !== p ? { ...s, p } : s));
+              },
+              controller.signal,
+            )
+          : null;
+        // Ακύρωση: πίσω στο παράθυρο, δεν φεύγει τίποτα.
+        if (controller.signal.aborted) return;
+        // Κρατάμε το μικρό μόνο αν όντως μίκρυνε.
+        done.set(
+          index,
+          out && out.file.size < item.prepared!.file.size
+            ? { file: out.file, info: { ...item.prepared!.info, width: out.width, height: out.height } }
+            : null,
+        );
+      }
+    } finally {
+      batch?.dispose();
+      if (abort.current === controller) abort.current = null;
+      setSqueezing(null);
+    }
+
+    // Όσα δεν μίκρυναν: φεύγουν όπως είναι αν χωράνε, αλλιώς «πολύ μεγάλο».
+    let tooLarge = false;
+    const next = items.map((item, index) => {
+      if (!done.has(index)) return item;
+      const small = done.get(index);
+      if (small) return { ...item, prepared: small, squeeze: false };
+      if (fitsUpload(item.prepared!.file.size)) return { ...item, squeeze: false };
+      tooLarge = true;
+      return { ...item, squeeze: false, error: t("err.fileTooLarge") };
+    });
+    setItems(next);
+    // Κάποιο δεν χωράει: ο χρήστης το βλέπει, και στέλνει τα υπόλοιπα αν θέλει.
+    if (tooLarge) return;
+    send(
+      chosen.map(({ index }) => next[index].prepared!),
+      caption.trim(),
+    );
+  }
+
   return (
-    <Modal title={t("send.title", { n: items.length })} close={close}>
+    <Modal title={t("send.title", { n: items.length })} close={close} locked={Boolean(squeezing)}>
       <div className="send-preview">
         {!shown?.prepared ? (
           <p className="hint">{t("send.preparing")}</p>
@@ -248,6 +344,9 @@ export function SendFilesDialog({
           </div>
         )}
         {shown?.error && <p className="error">{shown.error}</p>}
+        {shown?.squeeze && !shown.error && !squeezing && (
+          <p className="hint">{t("squeeze.note")}</p>
+        )}
       </div>
       {items.length > 1 && (
         <div className="send-strip">
@@ -264,38 +363,45 @@ export function SendFilesDialog({
         </div>
       )}
       {files.length > MAX_FILES && <p className="hint">{t("send.tooMany", { n: MAX_FILES })}</p>}
-      <div className="send-caption">
-        <input
-          className="modal-field"
-          autoFocus
-          maxLength={2000}
-          value={caption}
-          placeholder={t("send.caption")}
-          onChange={(e) => setCaption(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && ready) {
-              e.preventDefault();
-              send(
-                items.filter((i) => i.prepared && !i.error).map((i) => i.prepared!),
-                caption.trim(),
-              );
-            }
-          }}
-        />
-        <button
-          className="send"
-          disabled={!ready}
-          onClick={() =>
-            send(
-              items.filter((i) => i.prepared && !i.error).map((i) => i.prepared!),
-              caption.trim(),
-            )
-          }
-          aria-label={t("chat.send")}
-        >
-          <SendHorizontal />
-        </button>
-      </div>
+      {squeezing ? (
+        <div className="squeeze-progress" role="status">
+          <span>
+            {squeezing.n > 1
+              ? t("squeeze.workingN", { i: squeezing.i, n: squeezing.n, p: squeezing.p })
+              : t("squeeze.working", { p: squeezing.p })}
+          </span>
+          <progress max={100} value={squeezing.p} />
+          <small className="hint">{t("squeeze.keepOpen")}</small>
+          <button className="ghost" onClick={() => abort.current?.abort()}>
+            {t("common.cancel")}
+          </button>
+        </div>
+      ) : (
+        <div className="send-caption">
+          <input
+            className="modal-field"
+            autoFocus
+            maxLength={2000}
+            value={caption}
+            placeholder={t("send.caption")}
+            onChange={(e) => setCaption(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && ready) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+          />
+          <button
+            className="send"
+            disabled={!ready}
+            onClick={submit}
+            aria-label={t("chat.send")}
+          >
+            <SendHorizontal />
+          </button>
+        </div>
+      )}
     </Modal>
   );
 }
