@@ -103,6 +103,16 @@ select test.fails($$update profiles set display_name = 'Mila Team' where id = au
   'reserved', 'brand plus role is reserved');
 select test.fails($$update profiles set display_name = 'M' || chr(8203) || 'oderator' where id = auth.uid()$$,
   'reserved', 'zero-width characters do not get around it');
+select test.fails($$update profiles set display_name = 'Mìla Support' where id = auth.uid()$$,
+  'reserved', 'an accented Latin letter does not get around it');
+select test.fails($$update profiles set display_name = 'Admín' where id = auth.uid()$$,
+  'reserved', 'nor in a role word');
+select test.fails($$update profiles set display_name = 'Ｍｉｌａ' where id = auth.uid()$$,
+  'reserved', 'fullwidth letters do not get around it');
+select test.fails($$update profiles set display_name = '𝐌𝐢𝐥𝐚' where id = auth.uid()$$,
+  'reserved', 'math letters do not get around it');
+select test.fails($$update profiles set display_name = chr(10240) || chr(10240) where id = auth.uid()$$,
+  '2 to 60', 'Braille blanks are not a visible name');
 select test.fails($$update profiles set display_name = chr(8203) || 'x ' where id = auth.uid()$$,
   '2 to 60', 'too short after cleaning');
 select test.fails(format('update profiles set display_name = %L where id = auth.uid()', repeat('a', 61)),
@@ -113,6 +123,9 @@ select test.ok((select display_name from profiles where id = auth.uid()) = 'Kim 
 update profiles set display_name = 'Mila Kunis' where id = auth.uid();
 select test.ok((select display_name from profiles where id = auth.uid()) = 'Mila Kunis',
   'a real name that only contains Mila is allowed');
+update profiles set display_name = 'José Mila' where id = auth.uid();
+select test.ok((select display_name from profiles where id = auth.uid()) = 'José Mila',
+  'accents in a real name are kept');
 select test.fails($$update profiles set username = 'admin' where id = auth.uid()$$,
   'reserved', 'reserved username');
 update profiles set username = 'kimk' where id = auth.uid();
