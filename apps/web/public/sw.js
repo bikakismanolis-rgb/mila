@@ -2,7 +2,9 @@
  *
  * Στρατηγική:
  *  - Πλοήγηση (το index.html): network-first. Έτσι μια νέα έκδοση φαίνεται
- *    αμέσως μόλις ο χρήστης ξαναμπεί, χωρίς να κολλάει σε παλιό build.
+ *    αμέσως μόλις ο χρήστης ξαναμπεί, χωρίς να κολλάει σε παλιό build. Οι
+ *    στατικές σελίδες (privacy, όροι, install, qr) δεν είναι το app: δεν τις
+ *    αγγίζουμε.
  *  - /assets/*: cache-first. Το Vite βάζει hash στο όνομα, οπότε το
  *    περιεχόμενο δεν αλλάζει ποτέ για δεδομένο URL — ασφαλές να μείνει.
  *  - Οτιδήποτε άλλο (Supabase API, realtime, storage, fonts): δεν το αγγίζουμε.
@@ -11,7 +13,7 @@
  * κάτω μέρος του αρχείου.
  */
 
-const VERSION = "mila-v4";
+const VERSION = "mila-v5";
 const SHELL = `${VERSION}-shell`;
 const ASSETS = `${VERSION}-assets`;
 
@@ -41,6 +43,28 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Σελίδες του site που ΔΕΝ είναι το app: οι στατικές (privacy, όροι, οδηγίες
+// εγκατάστασης, QR) και ό,τι άλλο εξαιρείται από το rewrite στο vercel.json
+// (αρχεία με κατάληξη, /icons, /assets). Ούτε φυλάγονται στη θέση του app,
+// ούτε τις αντικαθιστά το app όταν δεν υπάρχει δίκτυο.
+const NOT_THE_APP = /^\/(privacy|terms|install|qr|icons|assets)(\/|$)|\.[a-z0-9]+$/i;
+
+/** Ως «κέλυφος» για όταν δεν υπάρχει δίκτυο φυλάγεται μόνο το ίδιο το app:
+ *  επιτυχημένη απάντηση, χωρίς ανακατεύθυνση, με το <div id="root">. Όχι
+ *  σελίδα σφάλματος, ούτε κάποια άλλη σελίδα του site. Φυλάγεται ολόκληρη η
+ *  απάντηση, με τα headers της: χωρίς το Content-Security-Policy κ.λπ. το app
+ *  που ανοίγει offline θα έτρεχε χωρίς αυτή την προστασία. */
+async function keepShell(response) {
+  const type = response.headers.get("content-type") || "";
+  if (!response.ok || response.redirected || response.type !== "basic" || !type.includes("text/html"))
+    return;
+  const copy = response.clone();
+  const html = await response.text();
+  if (!html.includes('id="root"')) return;
+  const cache = await caches.open(SHELL);
+  await cache.put("/", copy);
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
@@ -50,11 +74,11 @@ self.addEventListener("fetch", (event) => {
 
   // Πλοήγηση → network-first, με το cached shell ως δίχτυ για offline.
   if (request.mode === "navigate") {
+    if (!sameOrigin || NOT_THE_APP.test(url.pathname)) return;
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(SHELL).then((cache) => cache.put("/", copy));
+          keepShell(response.clone()).catch(() => undefined);
           return response;
         })
         .catch(() => caches.match("/").then((hit) => hit || Response.error())),
@@ -87,6 +111,9 @@ self.addEventListener("fetch", (event) => {
 // το έχει ήδη αποκρυπτογραφήσει πριν φτάσει εδώ. Περιεχόμενο:
 //   { conversationId, messageId, title, body, senderName, isGroup,
 //     hasAttachment, isRequest }
+// ή, για κλήση:
+//   { type: "call", event: "ring" | "missed" | "ended", callId,
+//     conversationId, title, callerName, video, isGroup }
 // Το body είναι πάντα κενό: ο server δεν ξέρει τι γράφει το μήνυμα (είναι
 // κρυπτογραφημένο από άκρη σε άκρη), άρα η ειδοποίηση λέει μόνο «Νέο μήνυμα».
 
@@ -104,6 +131,7 @@ const TEXT = GREEK
       missedVideo: "Αναπάντητη βιντεοκλήση",
       answer: "Απάντηση",
       decline: "Απόρριψη",
+      report: "Νέα αναφορά",
     }
   : {
       fallback: "New message",
@@ -115,6 +143,7 @@ const TEXT = GREEK
       missedVideo: "Missed video call",
       answer: "Answer",
       decline: "Decline",
+      report: "New report",
     };
 
 /** Εισερχόμενη / αναπάντητη κλήση. Ίδιο tag ανά κλήση, ώστε το «αναπάντητη»
@@ -150,6 +179,22 @@ async function showCall(data) {
   await self.registration.showNotification(data.title || "Mila", options);
 }
 
+// Safari (iPhone, iPad, Mac) ΑΚΥΡΩΝΕΙ τη συνδρομή μιας συσκευής αν μερικά push
+// στη σειρά δεν δείξουν ειδοποίηση, και ο χρήστης δεν το μαθαίνει ποτέ: απλώς
+// σταματά να παίρνει ειδοποιήσεις. Γι' αυτό ΚΑΘΕ push δείχνει μία, ακόμα κι
+// όταν δεν θέλουμε να φανεί (το app είναι μπροστά, ή η κλήση σταμάτησε να
+// χτυπάει): τη δείχνουμε αθόρυβα και την κλείνουμε αμέσως. Με το ίδιο tag
+// παίρνει τη θέση της προηγούμενης, άρα κλείνει κι εκείνη.
+async function showAndClose(title, tag) {
+  await self.registration.showNotification(title || "Mila", { tag, silent: true });
+  try {
+    for (const notification of await self.registration.getNotifications({ tag }))
+      notification.close();
+  } catch {
+    // Χωρίς getNotifications: μένει, αλλά αθόρυβη, στη θέση της παλιάς.
+  }
+}
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -160,19 +205,50 @@ self.addEventListener("push", (event) => {
 
   event.waitUntil(
     (async () => {
+      // { type: "report" }: νέα αναφορά, μόνο στους συντονιστές (0014). Δεν
+      // λέει ποιος ή τι: οι λεπτομέρειες είναι στον SQL editor (δες
+      // docs/MODERATION.md). Φαίνεται και με ανοιχτό το app, αφού μέσα στο app
+      // δεν υπάρχει άλλη ένδειξη.
+      if (data.type === "report") {
+        await self.registration.showNotification("Mila", {
+          body: TEXT.report,
+          icon: "/icons/icon-192.png",
+          badge: "/icons/icon-192.png",
+          tag: "mila-report",
+          renotify: true,
+          data: { kind: "report" },
+        });
+        return;
+      }
+
       const windows = await self.clients.matchAll({
         type: "window",
         includeUncontrolled: true,
       });
       // Το app είναι ανοιχτό και μπροστά: το μήνυμα (ή η κλήση) φαίνεται ήδη
-      // στην οθόνη, η ειδοποίηση θα ήταν θόρυβος.
-      if (windows.some((w) => w.visibilityState === "visible" && w.focused)) return;
+      // στην οθόνη, η ειδοποίηση θα ήταν θόρυβος (φαίνεται και κλείνει αμέσως,
+      // δες showAndClose).
+      const focused = windows.some((w) => w.visibilityState === "visible" && w.focused);
 
       if (data.type === "call" && data.callId) {
-        await showCall(data);
+        // Όποιο παράθυρο είναι ανοιχτό ξανακοιτάζει την κλήση: αν το Realtime
+        // του είχε κοπεί (παρασκήνιο, δίκτυο), αλλιώς δεν θα το μάθαινε.
+        for (const w of windows) w.postMessage({ type: "call-push", callId: data.callId });
+        // «Τέλος»: σήκωσα ή απέρριψα (από αυτή ή άλλη συσκευή μου). Φεύγει η
+        // «Εισερχόμενη κλήση» με τα κουμπιά της.
+        if (data.event === "ended" || focused)
+          await showAndClose(data.title, `call:${data.callId}`);
+        else await showCall(data);
         return;
       }
 
+      // Ίδιο tag ανά συνομιλία: δέκα μηνύματα από τον ίδιο άνθρωπο δεν
+      // γίνονται δέκα ειδοποιήσεις, η καινούργια αντικαθιστά την παλιά.
+      const tag = data.conversationId || "mila";
+      if (focused) {
+        await showAndClose(data.title, tag);
+        return;
+      }
       const text =
         data.body ||
         (data.isRequest ? TEXT.request : data.hasAttachment ? TEXT.file : TEXT.fallback);
@@ -182,9 +258,7 @@ self.addEventListener("push", (event) => {
         body,
         icon: "/icons/icon-192.png",
         badge: "/icons/icon-192.png",
-        // Ίδιο tag ανά συνομιλία: δέκα μηνύματα από τον ίδιο άνθρωπο δεν
-        // γίνονται δέκα ειδοποιήσεις, η καινούργια αντικαθιστά την παλιά.
-        tag: data.conversationId || "mila",
+        tag,
         renotify: true,
         data: { conversationId: data.conversationId || null },
       });

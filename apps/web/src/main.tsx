@@ -39,7 +39,8 @@ import { isNative, isStandalone, isTauri, registerServiceWorker } from "./platfo
 import { bootstrapNative } from "./native";
 import { t, translateError } from "./i18n";
 import { listTime } from "./format";
-import { disablePush, refreshPushOwner } from "./push";
+import { disablePushOnSignOut, refreshPushOwner } from "./push";
+import * as outbox from "./outbox";
 import { Empty } from "./components/common";
 import { Login } from "./components/Login";
 import { Landing } from "./components/Landing";
@@ -54,6 +55,8 @@ import { CallOverlay } from "./components/Call";
 import { CallIcon, CallsList, describeCall, unseenMissed } from "./components/CallsTab";
 import { NewGroupDialog } from "./components/Groups";
 import { InviteDialog } from "./components/Invite";
+import { SuspendedScreen } from "./components/Suspended";
+import { PushAfterCall, PushCard } from "./components/PushCard";
 
 const messageOf = (caught: unknown) =>
   translateError(caught instanceof Error ? caught.message : String(caught)) ||
@@ -125,6 +128,9 @@ function takeConversationFromUrl(): string | null {
 
 function App() {
   const [me, setMe] = useState<User | null>(null),
+    // Λογαριασμός σε αναστολή: δεν μπαίνει καν στο app (το me μένει null, άρα
+    // δεν ξεκινάνε λίστα, κλήσεις, «σε σύνδεση»), βλέπει μόνο την οθόνη αναστολής.
+    [suspended, setSuspended] = useState<User | null>(null),
     // Μέχρι να ξέρουμε αν υπάρχει ήδη συνεδρία, δεν δείχνουμε ούτε αρχική
     // σελίδα ούτε είσοδο: αλλιώς ένας συνδεδεμένος χρήστης τις βλέπει να
     // «αναβοσβήνουν» πριν ανοίξει η εφαρμογή.
@@ -165,11 +171,57 @@ function App() {
     // Διαβάζεται ΜΙΑ φορά (το useRef θα το ξανάτρεχε σε κάθε render).
     [callFromUrl] = useState(() => takeCallFromUrl()),
     pendingCall = useRef(callFromUrl),
-    lastSeenMessages = useRef<Map<string, string> | null>(null);
+    lastSeenMessages = useRef<Map<string, string> | null>(null),
+    // Ο λογαριασμός που έτρεξε σε αυτή τη σελίδα (δες accept).
+    account = useRef<string | null>(null);
 
   activeIdRef.current = activeId;
 
   const notify = useCallback((message: string) => setToast(message), []);
+
+  // Ο χρήστης που μόλις μάθαμε (σύνδεση, επαναφορά, έλεγχος). Το
+  // onAuthStateChange πυροδοτείται και σε TOKEN_REFRESHED και όταν η καρτέλα
+  // ξαναπαίρνει focus: ίδιος χρήστης = ίδιο αντικείμενο, αλλιώς θα ξαναστηνόταν
+  // από την αρχή η σύνδεση realtime.
+  const accept = useCallback((user: User) => {
+    // Άλλος λογαριασμός από αυτόν που έτρεχε εδώ (μπήκε από άλλη καρτέλα του
+    // ίδιου browser): ό,τι περίμενε να φύγει ήταν του προηγούμενου, και το
+    // data.ts κρατά ακόμα στη μνήμη τα δικά του. Καθαρή αρχή.
+    if (account.current && account.current !== user.id) {
+      outbox.clear();
+      location.reload();
+      return;
+    }
+    account.current = user.id;
+    if (user.suspended) {
+      setSuspended(user);
+      setMe(null);
+      return;
+    }
+    setSuspended(null);
+    setMe((prev) => (prev?.id === user.id ? prev : user));
+  }, []);
+
+  // Η βάση αρνήθηκε κάτι γιατί ο λογαριασμός μπήκε σε αναστολή (δες
+  // checkAccountOn στο data.ts): ξανακοιτάμε το προφίλ, και αν ισχύει, κλείνει
+  // ό,τι τρέχει και φαίνεται η οθόνη αναστολής.
+  useEffect(() => {
+    let checking = false;
+    const onCheck = () => {
+      if (checking || !supabase) return;
+      checking = true;
+      backend
+        .getMe()
+        .then((user) => user.suspended && accept(user))
+        .catch(() => undefined)
+        .finally(() => {
+          checking = false;
+        });
+    };
+    window.addEventListener("mila:account-check", onCheck);
+    return () => window.removeEventListener("mila:account-check", onCheck);
+  }, [accept]);
+
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 6000);
@@ -251,10 +303,11 @@ function App() {
       if (!data.session) return;
       try {
         const user = await backend.getMe();
-        if (alive) setMe(user);
+        if (alive) accept(user);
       } catch (error) {
         console.warn("Could not restore session:", error);
-        await supabase.auth.signOut();
+        // Μόνο αυτή η συσκευή: οι άλλες συνεδρίες του χρήστη δεν φταίνε.
+        await supabase.auth.signOut({ scope: "local" });
       }
     }
     void restoreSession().finally(() => {
@@ -270,6 +323,14 @@ function App() {
     if (!client) return;
     let alive = true;
     const { data } = client.auth.onAuthStateChange((event, session) => {
+      // Αποσύνδεση, και από άλλη καρτέλα, ή μπήκε άλλος λογαριασμός: ό,τι
+      // περίμενε να φύγει ήταν του προηγούμενου. Αμέσως, πριν προλάβει να
+      // ξαναδοκιμάσει να το στείλει με τη νέα συνεδρία.
+      if (
+        (!session && event === "SIGNED_OUT") ||
+        (session && account.current && session.user.id !== account.current)
+      )
+        outbox.clear();
       if (!session) return;
       if (event === "PASSWORD_RECOVERY") {
         sessionStorage.setItem("mila:password-recovery", "1");
@@ -283,11 +344,7 @@ function App() {
         try {
           if (event === "SIGNED_IN") await backend.ensureProfile();
           const user = await backend.getMe();
-          // Το onAuthStateChange πυροδοτείται και σε TOKEN_REFRESHED και όταν
-          // η καρτέλα ξαναπαίρνει focus. Χωρίς αυτόν τον έλεγχο, κάθε φορά
-          // έμπαινε νέο αντικείμενο στο state, άλλαζε η ταυτότητα του `me`
-          // και ξαναστηνόταν από την αρχή η σύνδεση realtime.
-          if (alive) setMe((prev) => (prev?.id === user.id ? prev : user));
+          if (alive) accept(user);
         } catch (error) {
           console.warn("Could not complete sign in:", error);
         }
@@ -547,14 +604,26 @@ function App() {
     // Η συσκευή σταματά να παίρνει ειδοποιήσεις για αυτόν τον λογαριασμό.
     // Με όριο χρόνου: η αποσύνδεση δεν περιμένει ένα αργό δίκτυο.
     await Promise.race([
-      disablePush().catch(() => undefined),
+      disablePushOnSignOut().catch(() => undefined),
       new Promise((resolve) => setTimeout(resolve, 2500)),
     ]);
-    await supabase?.auth.signOut();
+    // Μόνο από αυτή τη συσκευή, όπως στο WhatsApp. Το «παντού» (προεπιλογή του
+    // Supabase) έβγαζε και το κινητό όταν έκανες αποσύνδεση στον υπολογιστή.
+    await supabase?.auth.signOut({ scope: "local" });
+    // Ό,τι δεν είχε φύγει ήταν του λογαριασμού που φεύγει.
+    outbox.clear();
     location.reload();
   }
 
   if (!me) {
+    if (suspended?.suspended)
+      return (
+        <SuspendedScreen
+          suspension={suspended.suspended}
+          email={suspended.email || ""}
+          signOut={() => void signOut()}
+        />
+      );
     if (!sessionChecked && !recoveringPassword) return null;
     if (entry === "landing" && !recoveringPassword)
       return <Landing start={setEntry} />;
@@ -562,7 +631,7 @@ function App() {
       <Login
         // Νέο key = νέα φόρμα στη σωστή κατάσταση (εγγραφή ή σύνδεση).
         key={entry}
-        done={setMe}
+        done={accept}
         recoveringPassword={recoveringPassword}
         recoveryDone={() => setRecoveringPassword(false)}
         initialMode={entry === "signup" ? "signup" : "signin"}
@@ -837,6 +906,7 @@ function App() {
           />
         ) : (
           <div className="chatlist">
+            {!term && !showArchived && <PushCard notify={notify} />}
             {!term && !showArchived && archivedChats.length > 0 && (
               <button className="archived-row" onClick={() => setShowArchived(true)}>
                 <div className="avatar archived-icon">
@@ -971,6 +1041,7 @@ function App() {
       </section>
 
       <CallOverlay me={me} chats={chats} />
+      <PushAfterCall meId={me.id} notify={notify} />
 
       {invite !== null && (
         <InviteDialog me={me} initial={invite} close={() => setInvite(null)} />
@@ -1051,5 +1122,21 @@ createRoot(document.getElementById("root")!).render(
   </ErrorBoundary>,
 );
 
-registerServiceWorker();
+// Νέα έκδοση του site: η σελίδα ξαναφορτώνει μόνη της, αλλά ποτέ όσο τρέχει
+// ή χτυπάει κλήση, ούτε όσο περιμένει να φύγει κάποιο μήνυμα (η ουρά είναι
+// μόνο στη μνήμη, δες outbox.ts και registerServiceWorker).
+registerServiceWorker({
+  busy: () =>
+    calls.activeCallId() !== null ||
+    calls.snapshot().incoming.length > 0 ||
+    outbox.snapshot().some((p) => p.state !== "sent"),
+  watch: (listener) => {
+    const stopCalls = calls.subscribe(listener);
+    const stopOutbox = outbox.subscribe(listener);
+    return () => {
+      stopCalls();
+      stopOutbox();
+    };
+  },
+});
 void bootstrapNative();

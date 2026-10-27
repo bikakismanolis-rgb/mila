@@ -1,9 +1,10 @@
 // Προετοιμασία αρχείων πριν φύγουν: φωτογραφίες σε λογικό μέγεθος (και χωρίς
-// EXIF), μικρογραφία και διάρκεια για τα βίντεο, ηχογράφηση φωνητικών.
-// Ό,τι βγαίνει εδώ (διάρκεια, μικρογραφία, κυματομορφή) ταξιδεύει μέσα στο
-// κρυπτογραφημένο μήνυμα, όχι δίπλα του.
+// EXIF), μικρογραφία και διάρκεια για τα βίντεο, συμπίεση των μεγάλων βίντεο,
+// ηχογράφηση φωνητικών. Ό,τι βγαίνει εδώ (διάρκεια, μικρογραφία, κυματομορφή)
+// ταξιδεύει μέσα στο κρυπτογραφημένο μήνυμα, όχι δίπλα του.
 
 import type { MediaInfo } from "./data";
+import { fitsUpload, videoPlan } from "./limits";
 
 // ---------------------------------------------------------------------------
 // Φωτογραφίες
@@ -81,8 +82,9 @@ export async function prepareVideo(file: File): Promise<MediaInfo> {
       }),
       5000,
     );
+    const duration = await knownDuration(video);
     const info: MediaInfo = {
-      duration: Number.isFinite(video.duration) ? video.duration : undefined,
+      duration: duration || undefined,
       width: video.videoWidth || undefined,
       height: video.videoHeight || undefined,
     };
@@ -102,9 +104,46 @@ export async function prepareVideo(file: File): Promise<MediaInfo> {
   } catch {
     return {};
   } finally {
-    URL.revokeObjectURL(url);
+    // Πρώτα σταματά το στοιχείο, μετά σβήνει η διεύθυνση: αλλιώς ο browser
+    // ψάχνει ακόμα το αρχείο (π.χ. μετά το άλμα στο τέλος για τη διάρκεια).
     video.removeAttribute("src");
+    video.load();
+    URL.revokeObjectURL(url);
   }
+}
+
+/** Η διάρκεια σε δευτερόλεπτα, ή 0. Τα αρχεία του MediaRecorder (βίντεο από
+ *  άλλον browser ή app) συχνά δεν τη γράφουν (Infinity): ένα άλμα στο τέλος
+ *  αναγκάζει τον browser να τη βρει. */
+async function knownDuration(video: HTMLVideoElement): Promise<number> {
+  if (Number.isFinite(video.duration)) return video.duration;
+  try {
+    await withTimeout(
+      new Promise<void>((resolve) => {
+        video.ondurationchange = () => {
+          if (Number.isFinite(video.duration)) resolve();
+        };
+        video.currentTime = 1e101;
+      }),
+      3000,
+    );
+  } catch {
+    // Δεν βρέθηκε: μένει άγνωστη.
+  } finally {
+    video.ondurationchange = null;
+  }
+  const duration = Number.isFinite(video.duration) ? video.duration : 0;
+  if (video.currentTime) {
+    video.currentTime = 0;
+    await withTimeout(
+      new Promise<void>((resolve) => {
+        video.onseeked = () => resolve();
+      }),
+      3000,
+    ).catch(() => undefined);
+    video.onseeked = null;
+  }
+  return duration;
 }
 
 /** Μικρογραφία έως 320 px και ~14 KB, για να χωράει άνετα στο μήνυμα. */
@@ -122,6 +161,246 @@ function snapshot(source: CanvasImageSource, width: number, height: number): str
     if (url.length < 19_000) return url;
   }
   return undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Συμπίεση βίντεο
+// ---------------------------------------------------------------------------
+// Το βίντεο παίζει κρυφά (ούτε φαίνεται ούτε ακούγεται) και ξαναγράφεται:
+// κάθε καρέ ζωγραφίζεται σε canvas ~720p, ο ήχος περνάει από το Web Audio, και
+// το MediaRecorder τα γράφει με χαμηλότερο bitrate (limits.ts, videoPlan). Σε
+// πραγματικό χρόνο: ένα λεπτό βίντεο θέλει ένα λεπτό. Όπου κάτι από αυτά λείπει
+// ή πάει στραβά, δεν γίνεται τίποτα: το βίντεο φεύγει όπως είναι, ή, αν δεν
+// χωράει, βγαίνει το γνωστό «πολύ μεγάλο».
+
+const AudioCtor: typeof AudioContext | undefined =
+  typeof window === "undefined"
+    ? undefined
+    : window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+export const canSqueezeVideo =
+  typeof MediaRecorder !== "undefined" &&
+  typeof HTMLCanvasElement !== "undefined" &&
+  typeof HTMLCanvasElement.prototype.captureStream === "function" &&
+  Boolean(AudioCtor);
+
+/** MP4 (H.264) όπου γίνεται: παίζει παντού, και στο iPhone. Αλλιώς WebM. */
+function videoRecorderType(): string {
+  const options = [
+    "video/mp4;codecs=avc1.42E01F,mp4a.40.2",
+    "video/mp4;codecs=avc1.42E01F,opus",
+    "video/mp4",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ];
+  return options.find((type) => MediaRecorder.isTypeSupported?.(type)) || "";
+}
+
+export type Squeezed = { file: File; width: number; height: number };
+
+export type SqueezeBatch = {
+  /** Ένα-ένα, με τη σειρά. null αν δεν μίκρυνε (ή ακυρώθηκε). */
+  run: (
+    index: number,
+    onProgress: (fraction: number) => void,
+    signal: AbortSignal,
+  ) => Promise<Squeezed | null>;
+  /** Τέλος: ελευθερώνει ό,τι κρατήθηκε. */
+  dispose: () => void;
+};
+
+/**
+ * Ετοιμάζει τη συμπίεση. ΠΡΕΠΕΙ να καλείται μέσα στο πάτημα του χρήστη (στο
+ * click του «Αποστολή»), πριν από κάθε await: το Safari, και κάθε browser στο
+ * iPhone, αφήνουν ένα βίντεο να παίξει με ήχο μόνο αν ξεκίνησε από πάτημα.
+ * Γι' αυτό εδώ γίνονται ΜΟΝΟ τα σύγχρονα: τα στοιχεία <video>, το Web Audio,
+ * και ένα play/pause σε καθένα που τα «ξεκλειδώνει». null αν δεν γίνεται.
+ */
+export function prepareSqueeze(files: File[]): SqueezeBatch | null {
+  if (!canSqueezeVideo || !AudioCtor) return null;
+  let audio: AudioContext;
+  try {
+    audio = new AudioCtor();
+  } catch {
+    return null;
+  }
+  void audio.resume().catch(() => undefined);
+  const urls: string[] = [];
+  const videos = files.map((file) => {
+    const url = URL.createObjectURL(file);
+    urls.push(url);
+    const video = document.createElement("video");
+    video.playsInline = true;
+    video.preload = "auto";
+    video.src = url;
+    video.play().catch(() => undefined);
+    video.pause();
+    return video;
+  });
+  return {
+    run: (index, onProgress, signal) =>
+      squeeze(files[index], videos[index], audio, onProgress, signal).catch(() => null),
+    dispose: () => {
+      for (const video of videos) {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      }
+      for (const url of urls) URL.revokeObjectURL(url);
+      void audio.close().catch(() => undefined);
+    },
+  };
+}
+
+/** Έχει το βίντεο ήχο; null αν ο browser δεν το λέει. */
+function hasAudio(video: HTMLVideoElement): boolean | null {
+  const v = video as HTMLVideoElement & {
+    mozHasAudio?: boolean;
+    audioTracks?: { length: number };
+    webkitAudioDecodedByteCount?: number;
+  };
+  if (typeof v.mozHasAudio === "boolean") return v.mozHasAudio;
+  if (v.audioTracks) return v.audioTracks.length > 0;
+  if (typeof v.webkitAudioDecodedByteCount === "number") return v.webkitAudioDecodedByteCount > 0;
+  return null;
+}
+
+async function squeeze(
+  file: File,
+  video: HTMLVideoElement,
+  audio: AudioContext,
+  onProgress: (fraction: number) => void,
+  signal: AbortSignal,
+): Promise<Squeezed | null> {
+  if (signal.aborted) return null;
+  if (video.readyState < 1)
+    await withTimeout(
+      new Promise<void>((resolve, reject) => {
+        video.onloadedmetadata = () => resolve();
+        video.onerror = () => reject(new Error("video"));
+      }),
+      10_000,
+    );
+  const duration = await knownDuration(video);
+  const plan = videoPlan(duration, video.videoWidth, video.videoHeight);
+  if (!plan || signal.aborted) return null;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = plan.width;
+  canvas.height = plan.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  // Ο ήχος πάει ΜΟΝΟ στην εγγραφή (όχι στα ηχεία), και σε έναν «μετρητή»: αν
+  // ο browser δώσει σιωπή αντί για τον ήχο, δεν στέλνουμε βουβό βίντεο.
+  const source = audio.createMediaElementSource(video);
+  const sink = audio.createMediaStreamDestination();
+  const meter = audio.createAnalyser();
+  meter.fftSize = 512;
+  source.connect(sink);
+  source.connect(meter);
+  const samples = new Float32Array(meter.fftSize);
+  let heard = false;
+
+  const frames = canvas.captureStream(30);
+  const stream = new MediaStream([
+    ...frames.getVideoTracks(),
+    ...sink.stream.getAudioTracks(),
+  ]);
+  const type = videoRecorderType();
+  const recorder = new MediaRecorder(stream, {
+    ...(type ? { mimeType: type } : {}),
+    videoBitsPerSecond: plan.videoBitsPerSecond,
+    audioBitsPerSecond: plan.audioBitsPerSecond,
+  });
+  const chunks: Blob[] = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data.size) chunks.push(e.data);
+  };
+
+  let watchdog: number | undefined;
+  let onVisibility: (() => void) | undefined;
+  try {
+    const outcome = await new Promise<"done" | "failed" | "aborted">((resolve) => {
+      let finished = false;
+      const finish = (how: "done" | "failed" | "aborted") => {
+        if (finished) return;
+        finished = true;
+        resolve(how);
+      };
+      const withFrames = video as HTMLVideoElement & {
+        requestVideoFrameCallback?: (callback: () => void) => number;
+      };
+      const draw = () => {
+        if (finished) return;
+        ctx.drawImage(video, 0, 0, plan.width, plan.height);
+        onProgress(Math.min(1, video.currentTime / duration));
+        if (withFrames.requestVideoFrameCallback) withFrames.requestVideoFrameCallback(draw);
+        else requestAnimationFrame(draw);
+      };
+      video.onended = () => finish("done");
+      video.onerror = () => finish("failed");
+      signal.addEventListener("abort", () => finish("aborted"), { once: true });
+
+      // Στο παρασκήνιο ο browser σταματά να ζωγραφίζει: παύση, αλλιώς το
+      // βίντεο θα έβγαινε «παγωμένο». Και αν κολλήσει (π.χ. δεν ξέρει να το
+      // αποκωδικοποιήσει), τα παρατάμε.
+      onVisibility = () => {
+        if (document.visibilityState === "hidden") {
+          video.pause();
+          if (recorder.state === "recording") recorder.pause();
+        } else if (!finished) {
+          if (recorder.state === "paused") recorder.resume();
+          video.play().catch(() => finish("failed"));
+        }
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+      let last = -1;
+      let still = 0;
+      watchdog = window.setInterval(() => {
+        meter.getFloatTimeDomainData(samples);
+        if (!heard && samples.some((x) => Math.abs(x) > 1e-6)) heard = true;
+        if (document.visibilityState === "hidden") return;
+        if (video.currentTime !== last) {
+          last = video.currentTime;
+          still = 0;
+        } else if (++still > 60) finish("failed");
+      }, 250);
+
+      // Η εγγραφή αρχίζει μόλις παίξει, για να μη γραφτεί μαύρο καρέ στην αρχή.
+      video.play().then(
+        () => {
+          if (finished) return;
+          recorder.start(1000);
+          draw();
+        },
+        () => finish("failed"),
+      );
+    });
+
+    video.pause();
+    if (recorder.state !== "inactive")
+      await new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve();
+        recorder.stop();
+      });
+    if (outcome !== "done") return null;
+    if (hasAudio(video) && !heard) return null;
+
+    const mime = (recorder.mimeType || type || "video/webm").split(";")[0];
+    const blob = new Blob(chunks, { type: mime });
+    if (!blob.size || !fitsUpload(blob.size)) return null;
+    const name = `${file.name.replace(/\.[^.]+$/, "") || "video"}.${mime.includes("mp4") ? "mp4" : "webm"}`;
+    onProgress(1);
+    return { file: new File([blob], name, { type: mime }), width: plan.width, height: plan.height };
+  } finally {
+    window.clearInterval(watchdog);
+    if (onVisibility) document.removeEventListener("visibilitychange", onVisibility);
+    for (const track of stream.getTracks()) track.stop();
+    source.disconnect();
+  }
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {

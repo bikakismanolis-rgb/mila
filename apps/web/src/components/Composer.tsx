@@ -17,7 +17,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import * as backend from "../data";
 import type { MediaInfo, Msg, User } from "../data";
 import { t } from "../i18n";
-import { isMobile } from "../platform";
+import { holdReload, isMobile } from "../platform";
 import { EmojiPicker } from "./Emoji";
 import { VoiceButton } from "./Voice";
 import { messageSnippet } from "./Conversation";
@@ -79,6 +79,13 @@ export function Composer({
       if (el) drafts.current.set(chatId, el.value);
     };
   }, [chatId]);
+
+  // Κείμενο που δεν στάλθηκε, εδώ ή σε άλλη συνομιλία (τα drafts είναι μόνο
+  // στη μνήμη): η σελίδα δεν ξαναφορτώνει μόνη της για νέα έκδοση.
+  const unsent =
+    Boolean(text.trim()) ||
+    [...drafts.current].some(([id, draft]) => id !== chatId && draft.trim());
+  useEffect(() => (unsent ? holdReload() : undefined), [unsent]);
 
   // Επεξεργασία: το πεδίο γεμίζει με το παλιό κείμενο.
   useEffect(() => {

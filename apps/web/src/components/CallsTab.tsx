@@ -48,7 +48,9 @@ export function describeCall(call: Call, meId: string): CallSummary {
 
   let detail = "";
   if (!ongoing) {
-    if (answered && (iJoined || outgoing) && seconds >= 1) detail = clock(seconds);
+    // Σήκωσαν, αλλά η σύνδεση δεν στήθηκε ποτέ: όχι διάρκεια, το γιατί.
+    if (call.endReason === "failed") detail = t("call.failed");
+    else if (answered && (iJoined || outgoing) && seconds >= 1) detail = clock(seconds);
     else if (outgoing && call.endReason === "busy") detail = t("call.busy");
     else if (outgoing && call.endReason === "declined") detail = t("call.declined");
     else if (outgoing && !answered) detail = t("call.noAnswer");

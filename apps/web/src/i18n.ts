@@ -83,14 +83,12 @@ const en = {
   "login.email": "Email address",
   "login.password": "Password",
   "login.yourPassword": "Your password",
-  "login.passwordHint": "At least 6 characters",
+  "login.passwordHint": "At least 8 characters",
   "login.displayName": "Display name",
   "login.displayNameNote": "(new accounts)",
   "login.displayNameHint": "How people know you",
   "login.signIn": "Sign in",
   "login.createAccount": "Create account",
-  "login.consentBefore": "By creating an account you agree to our",
-  "login.privacyPolicy": "privacy policy",
   "login.consentAfter":
     "Messages are end-to-end encrypted: they are locked on your device before they leave it.",
   "login.newHere": "New here?",
@@ -374,7 +372,7 @@ const en = {
     "Your login, password and Google connection are erased.",
   "account.deleteItem2": "Your name, photo and profile details are erased.",
   "account.deleteItem3":
-    "Messages you already sent stay in the other person's chat, shown as sent by a deleted user.",
+    "Messages you already sent, and calls you were in, stay in the other person's history, shown as from a deleted user.",
   "account.typeDeleteBefore": "Type",
   "account.typeDeleteAfter": "to confirm",
   "account.keep": "Keep my account",
@@ -395,7 +393,7 @@ const en = {
     "Confirm your email first — open the link we sent you, then sign in.",
   "err.alreadyRegistered":
     "There is already an account with this email. Sign in instead.",
-  "err.passwordShort": "Password must be at least 6 characters.",
+  "err.passwordShort": "Password must be at least 8 characters.",
   "err.samePassword": "Choose a password different from your current one.",
   "err.rateLimitSeconds": "Too many attempts. Try again in {n} seconds.",
   "err.rateLimit": "Too many attempts. Please wait a little and try again.",
@@ -406,7 +404,7 @@ const en = {
   "err.alreadyDeleted": "This account has already been deleted.",
   "err.search": "Search is unavailable right now.",
   "err.matchContacts": "Could not match your contacts.",
-  "err.fileTooLarge": "That file is larger than the 15 MB limit.",
+  "err.fileTooLarge": "That file is larger than the 50 MB limit.",
   "err.upload": "Upload failed.",
   "err.loadChats": "Could not load your conversations.",
   "err.loadMessages": "Could not load these messages.",
@@ -617,6 +615,82 @@ const en = {
 
   "err.editWindow": "Messages can only be edited for 15 minutes after sending.",
   "err.pinLimit": "You can pin up to 3 chats.",
+
+  // --- safety ---
+  "report.titleMessage": "Report this message",
+  "report.titleGroup": "Report the group {name}",
+  "report.textGroup": "Tell us briefly what happened. Nobody in the group is told.",
+  "report.group": "Report group",
+  "report.shareMessage": "Also send the text of this message to the moderators",
+  "report.shareRecent": "Also send the last {n} messages of this chat to the moderators",
+  "report.shareHint":
+    "Messages are end-to-end encrypted, so the moderators can't read them. They only see the text you choose to send here.",
+  "report.nothingToShare":
+    "Messages are end-to-end encrypted, so the moderators can't read them. They will see who you reported and when.",
+  "report.preview": "This is exactly what will be sent:",
+  "report.attachment": "[file: {name}]",
+  "report.voice": "[voice message]",
+  "report.errTarget": "This can no longer be reported.",
+  "report.errSelf": "You can't report yourself.",
+  "report.errReason": "Write a few words about what happened (up to 500 characters).",
+  "report.errLimit": "You've sent a lot of reports today. Try again tomorrow.",
+  "err.suspended": "Your account is suspended.",
+  "err.nameReserved": "This name is reserved. Please choose another one.",
+  "err.nameLength": "Your name must be between 2 and 60 characters.",
+  "err.enterPassword": "Enter your password.",
+  "suspended.title": "Your account has been suspended",
+  "suspended.text":
+    "Since {date} you can't send messages, call or find people on Mila. Your data has not been deleted.",
+  "suspended.reason": "The moderators' reason:",
+  "suspended.noReason": "The moderators did not add a note.",
+  "suspended.contestBefore": "If you think this is a mistake, write to us at the address in our",
+  "suspended.contestLink": "privacy policy",
+  "suspended.contestAfter": ". We will look at it again.",
+  "suspended.stillCan": "You can still download your data or delete your account.",
+  "account.signOutEverywhere": "Sign out on all devices",
+  "account.signOutEverywhereText":
+    "Every phone and computer signed in to your account is signed out, this one too, and none of them gets notifications any more. Useful if you lost a device or signed in somewhere you don't trust.",
+
+  // --- calls ---
+  "call.answerNoPermission":
+    "You couldn't answer: Mila isn't allowed to use your microphone. Allow it in your browser's settings for this site, then call them back.",
+  "call.answerNoMic": "You couldn't answer: no microphone was found on this device.",
+  "call.answerMicBusy":
+    "You couldn't answer: another app is using the microphone. Close it, then call them back.",
+  "call.answerMediaFailed":
+    "You couldn't answer: the microphone didn't open. Call them back to try again.",
+
+  // --- messaging ---
+  "outbox.sending": "Sending…",
+  "outbox.failed": "Not sent. Tap to try again.",
+  "outbox.retry": "Try again",
+  "outbox.delete": "Delete",
+  "pushCard.title": "Turn on notifications",
+  "pushCard.text": "Know straight away when a message or a call comes in, even when Mila is closed.",
+  "pushCard.enable": "Turn on",
+  "pushCard.dismiss": "Not now",
+  "pushCard.iosTitle": "Notifications on iPhone and iPad",
+  "pushCard.iosText":
+    "Add Mila to your Home Screen and open it from there: tap Share, then “Add to Home Screen”.",
+  "pushCard.done": "Notifications are on.",
+  "pushAsk.title": "Don't miss a call",
+  "pushAsk.text":
+    "Turn on notifications so you hear it when someone calls you, even when Mila is closed.",
+  "squeeze.note": "Large video: it will be made smaller (720p) before it's sent.",
+  "squeeze.working": "Making the video smaller… {p}%",
+  "squeeze.workingN": "Making video {i} of {n} smaller… {p}%",
+  "squeeze.keepOpen": "Keep Mila open until it's done.",
+
+  // --- legal ---
+  "legal.consentBefore": "By creating an account you accept the",
+  "legal.googleConsentBefore":
+    "If you are new, continuing with Google creates an account and you accept the",
+  "legal.terms": "terms of use",
+  "legal.and": "and the",
+  "legal.privacy": "privacy policy",
+  "legal.readTerms": "Read the terms of use",
+  "legal.readTermsAfter": "— the rules everyone here agrees to.",
+  "legal.footerTerms": "Terms",
 } as const;
 
 export type TKey = keyof typeof en;
@@ -643,14 +717,12 @@ const el: Record<TKey, string> = {
   "login.email": "Διεύθυνση email",
   "login.password": "Κωδικός",
   "login.yourPassword": "Ο κωδικός σου",
-  "login.passwordHint": "Τουλάχιστον 6 χαρακτήρες",
+  "login.passwordHint": "Τουλάχιστον 8 χαρακτήρες",
   "login.displayName": "Όνομα",
   "login.displayNameNote": "(για νέους λογαριασμούς)",
   "login.displayNameHint": "Πώς θα σε βλέπουν οι άλλοι",
   "login.signIn": "Σύνδεση",
   "login.createAccount": "Δημιουργία λογαριασμού",
-  "login.consentBefore": "Δημιουργώντας λογαριασμό συμφωνείς με την",
-  "login.privacyPolicy": "πολιτική απορρήτου",
   "login.consentAfter":
     "Τα μηνύματα κρυπτογραφούνται από άκρη σε άκρη: κλειδώνουν στη συσκευή σου πριν φύγουν από αυτήν.",
   "login.newHere": "Πρώτη φορά εδώ;",
@@ -934,7 +1006,7 @@ const el: Record<TKey, string> = {
     "Σβήνονται η σύνδεση, ο κωδικός και η σύνδεσή σου με Google.",
   "account.deleteItem2": "Σβήνονται το όνομα, η φωτογραφία και τα στοιχεία του προφίλ σου.",
   "account.deleteItem3":
-    "Τα μηνύματα που έχεις ήδη στείλει μένουν στη συνομιλία του άλλου, ως μηνύματα διαγραμμένου χρήστη.",
+    "Τα μηνύματα που έχεις ήδη στείλει και οι κλήσεις στις οποίες ήσουν μένουν στο ιστορικό του άλλου, ως διαγραμμένου χρήστη.",
   "account.typeDeleteBefore": "Γράψε",
   "account.typeDeleteAfter": "για επιβεβαίωση",
   "account.keep": "Κρατάω τον λογαριασμό",
@@ -955,7 +1027,7 @@ const el: Record<TKey, string> = {
     "Επιβεβαίωσε πρώτα το email σου — άνοιξε τον σύνδεσμο που σου στείλαμε, και μετά συνδέσου.",
   "err.alreadyRegistered":
     "Υπάρχει ήδη λογαριασμός με αυτό το email. Κάνε σύνδεση.",
-  "err.passwordShort": "Ο κωδικός θέλει τουλάχιστον 6 χαρακτήρες.",
+  "err.passwordShort": "Ο κωδικός θέλει τουλάχιστον 8 χαρακτήρες.",
   "err.samePassword": "Διάλεξε κωδικό διαφορετικό από τον τωρινό.",
   "err.rateLimitSeconds": "Πολλές προσπάθειες. Δοκίμασε ξανά σε {n} δευτερόλεπτα.",
   "err.rateLimit": "Πολλές προσπάθειες. Περίμενε λίγο και δοκίμασε ξανά.",
@@ -966,7 +1038,7 @@ const el: Record<TKey, string> = {
   "err.alreadyDeleted": "Αυτός ο λογαριασμός έχει ήδη διαγραφεί.",
   "err.search": "Η αναζήτηση δεν είναι διαθέσιμη αυτή τη στιγμή.",
   "err.matchContacts": "Δεν έγινε η αντιστοίχιση των επαφών σου.",
-  "err.fileTooLarge": "Το αρχείο ξεπερνά το όριο των 15 MB.",
+  "err.fileTooLarge": "Το αρχείο ξεπερνά το όριο των 50 MB.",
   "err.upload": "Το ανέβασμα απέτυχε.",
   "err.loadChats": "Δεν φόρτωσαν οι συνομιλίες σου.",
   "err.loadMessages": "Δεν φόρτωσαν τα μηνύματα.",
@@ -1177,6 +1249,82 @@ const el: Record<TKey, string> = {
 
   "err.editWindow": "Ένα μήνυμα αλλάζει μόνο μέσα σε 15 λεπτά από την αποστολή.",
   "err.pinLimit": "Μπορείς να καρφιτσώσεις έως 3 συνομιλίες.",
+
+  // --- safety ---
+  "report.titleMessage": "Αναφορά μηνύματος",
+  "report.titleGroup": "Αναφορά ομάδας: {name}",
+  "report.textGroup": "Πες μας με δυο λόγια τι έγινε. Κανείς στην ομάδα δεν ειδοποιείται.",
+  "report.group": "Αναφορά ομάδας",
+  "report.shareMessage": "Να σταλεί και το κείμενο αυτού του μηνύματος στους συντονιστές",
+  "report.shareRecent": "Να σταλούν και τα τελευταία {n} μηνύματα της συνομιλίας στους συντονιστές",
+  "report.shareHint":
+    "Τα μηνύματα κρυπτογραφούνται από άκρη σε άκρη, οπότε οι συντονιστές δεν μπορούν να τα διαβάσουν. Βλέπουν μόνο το κείμενο που θα επιλέξεις να στείλεις εδώ.",
+  "report.nothingToShare":
+    "Τα μηνύματα κρυπτογραφούνται από άκρη σε άκρη, οπότε οι συντονιστές δεν μπορούν να τα διαβάσουν. Θα δουν ποιον ανέφερες και πότε.",
+  "report.preview": "Αυτό ακριβώς θα σταλεί:",
+  "report.attachment": "[αρχείο: {name}]",
+  "report.voice": "[φωνητικό μήνυμα]",
+  "report.errTarget": "Αυτό δεν μπορεί πια να αναφερθεί.",
+  "report.errSelf": "Δεν μπορείς να κάνεις αναφορά για τον εαυτό σου.",
+  "report.errReason": "Γράψε με λίγα λόγια τι έγινε (έως 500 χαρακτήρες).",
+  "report.errLimit": "Έστειλες πολλές αναφορές σήμερα. Δοκίμασε ξανά αύριο.",
+  "err.suspended": "Ο λογαριασμός σου είναι σε αναστολή.",
+  "err.nameReserved": "Αυτό το όνομα είναι δεσμευμένο. Διάλεξε κάποιο άλλο.",
+  "err.nameLength": "Το όνομα θέλει από 2 έως 60 χαρακτήρες.",
+  "err.enterPassword": "Γράψε τον κωδικό σου.",
+  "suspended.title": "Ο λογαριασμός σου έχει ανασταλεί",
+  "suspended.text":
+    "Από τις {date} δεν μπορείς να στέλνεις μηνύματα, να καλείς ή να βρίσκεις ανθρώπους στο Mila. Τα δεδομένα σου δεν έχουν σβηστεί.",
+  "suspended.reason": "Η αιτία, όπως τη γράφουν οι συντονιστές:",
+  "suspended.noReason": "Οι συντονιστές δεν πρόσθεσαν σημείωση.",
+  "suspended.contestBefore": "Αν πιστεύεις ότι έγινε λάθος, γράψε μας στη διεύθυνση που θα βρεις στην",
+  "suspended.contestLink": "πολιτική απορρήτου",
+  "suspended.contestAfter": ". Θα το ξανακοιτάξουμε.",
+  "suspended.stillCan": "Μπορείς ακόμα να κατεβάσεις τα δεδομένα σου ή να διαγράψεις τον λογαριασμό σου.",
+  "account.signOutEverywhere": "Αποσύνδεση από όλες τις συσκευές",
+  "account.signOutEverywhereText":
+    "Αποσυνδέεται κάθε κινητό και υπολογιστής που έχει μπει στον λογαριασμό σου, και αυτή η συσκευή, και καμία δεν παίρνει πια ειδοποιήσεις. Χρήσιμο αν έχασες μια συσκευή ή μπήκες κάπου που δεν εμπιστεύεσαι.",
+
+  // --- calls ---
+  "call.answerNoPermission":
+    "Δεν μπόρεσες να απαντήσεις: το Mila δεν έχει άδεια για το μικρόφωνο. Δώσ' την από τις ρυθμίσεις του browser για αυτό το site και κάλεσε πίσω.",
+  "call.answerNoMic": "Δεν μπόρεσες να απαντήσεις: δεν βρέθηκε μικρόφωνο σε αυτή τη συσκευή.",
+  "call.answerMicBusy":
+    "Δεν μπόρεσες να απαντήσεις: άλλη εφαρμογή χρησιμοποιεί το μικρόφωνο. Κλείσ' την και κάλεσε πίσω.",
+  "call.answerMediaFailed":
+    "Δεν μπόρεσες να απαντήσεις: το μικρόφωνο δεν άνοιξε. Κάλεσε πίσω για να ξαναδοκιμάσεις.",
+
+  // --- messaging ---
+  "outbox.sending": "Στέλνεται…",
+  "outbox.failed": "Δεν στάλθηκε. Πάτα για να ξαναδοκιμάσεις.",
+  "outbox.retry": "Δοκίμασε ξανά",
+  "outbox.delete": "Διαγραφή",
+  "pushCard.title": "Άνοιξε τις ειδοποιήσεις",
+  "pushCard.text": "Μαθαίνεις αμέσως για νέο μήνυμα ή κλήση, ακόμα κι όταν το Mila είναι κλειστό.",
+  "pushCard.enable": "Άνοιγμα",
+  "pushCard.dismiss": "Όχι τώρα",
+  "pushCard.iosTitle": "Ειδοποιήσεις σε iPhone και iPad",
+  "pushCard.iosText":
+    "Βάλε το Mila στην αρχική οθόνη και άνοιξέ το από εκεί: Κοινή χρήση → «Προσθήκη στην οθόνη Αφετηρίας».",
+  "pushCard.done": "Οι ειδοποιήσεις άνοιξαν.",
+  "pushAsk.title": "Μη χάνεις κλήσεις",
+  "pushAsk.text":
+    "Άνοιξε τις ειδοποιήσεις, για να ακούς όταν σε καλούν, ακόμα κι όταν το Mila είναι κλειστό.",
+  "squeeze.note": "Μεγάλο βίντεο: θα μικρύνει (720p) πριν σταλεί.",
+  "squeeze.working": "Το βίντεο μικραίνει… {p}%",
+  "squeeze.workingN": "Μικραίνει το βίντεο {i} από {n}… {p}%",
+  "squeeze.keepOpen": "Κράτα το Mila ανοιχτό μέχρι να τελειώσει.",
+
+  // --- legal ---
+  "legal.consentBefore": "Με τη δημιουργία λογαριασμού αποδέχεσαι τους",
+  "legal.googleConsentBefore":
+    "Την πρώτη φορά, η σύνδεση με Google φτιάχνει λογαριασμό, και αποδέχεσαι τους",
+  "legal.terms": "όρους χρήσης",
+  "legal.and": "και την",
+  "legal.privacy": "πολιτική απορρήτου",
+  "legal.readTerms": "Διάβασε τους όρους χρήσης",
+  "legal.readTermsAfter": "— οι κανόνες που δεχόμαστε όλοι εδώ.",
+  "legal.footerTerms": "Όροι",
 };
 
 const dictionaries: Record<Lang, Record<TKey, string>> = { en, el };
@@ -1193,6 +1341,14 @@ export function t(key: TKey, params?: Record<string, string | number>): string {
 // συναντά ένας κανονικός χρήστης μεταφράζονται εδώ· τα υπόλοιπα (σπάνια,
 // τεχνικά) περνάνε όπως είναι, για να μπορεί να μας τα πει.
 const KNOWN_ERRORS: Array<[RegExp, TKey]> = [
+  // --- safety --- (πριν από τα γενικά «rate limit» και «not authenticated»)
+  [/account suspended/i, "err.suspended"],
+  [/this name is reserved/i, "err.nameReserved"],
+  [/display name must be/i, "err.nameLength"],
+  [/nothing to report/i, "report.errTarget"],
+  [/cannot report yourself/i, "report.errSelf"],
+  [/report reason must be|report excerpt is too long/i, "report.errReason"],
+  [/rate limit exceeded: report/i, "report.errLimit"],
   [/invalid login credentials/i, "err.invalidLogin"],
   [/email not confirmed/i, "err.emailNotConfirmed"],
   [/already registered|already been registered/i, "err.alreadyRegistered"],

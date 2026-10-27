@@ -29,6 +29,8 @@ import type { Call, CallParticipant, Chat, MemberDevice, User } from "./data";
 import * as e2ee from "./e2ee";
 import type { DeviceKeys } from "./e2ee";
 import { t, translateError } from "./i18n";
+import type { TKey } from "./i18n";
+import { isMobile } from "./platform";
 import { blip, startTone } from "./tones";
 
 export type Phase = "starting" | "ringing" | "connecting" | "active" | "ended";
@@ -110,8 +112,6 @@ const RING_TIMEOUT = 45_000;
 const HEARTBEAT = 10_000;
 const INCOMING_MAX_AGE = 75_000;
 
-const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
 const videoConstraints = (
   facing: "user" | "environment",
 ): MediaTrackConstraints => ({
@@ -127,15 +127,40 @@ const AUDIO: MediaTrackConstraints = {
   autoGainControl: true,
 };
 
-function mediaError(caught: unknown): Error {
+/** Γιατί δεν άνοιξε το μικρόφωνο (ή η κάμερα): δεν δόθηκε άδεια, δεν
+ *  υπάρχει, το κρατάει άλλη εφαρμογή, ή κάτι άλλο. */
+type MediaProblem = "permission" | "missing" | "busy" | "other";
+
+const MEDIA_TEXT: Record<MediaProblem, TKey> = {
+  permission: "call.errPermission",
+  missing: "call.errNoMic",
+  busy: "call.errDeviceBusy",
+  other: "call.errMedia",
+};
+
+/** Το ίδιο, όταν συμβαίνει τη στιγμή που πατάς «Απάντηση». */
+const ANSWER_TEXT: Record<MediaProblem, TKey> = {
+  permission: "call.answerNoPermission",
+  missing: "call.answerNoMic",
+  busy: "call.answerMicBusy",
+  other: "call.answerMediaFailed",
+};
+
+class MediaError extends Error {
+  constructor(public problem: MediaProblem) {
+    super(t(MEDIA_TEXT[problem]));
+  }
+}
+
+function mediaError(caught: unknown): MediaError {
   const name = (caught as DOMException | null)?.name || "";
   if (name === "NotAllowedError" || name === "SecurityError")
-    return new Error(t("call.errPermission"));
+    return new MediaError("permission");
   if (name === "NotFoundError" || name === "OverconstrainedError")
-    return new Error(t("call.errNoMic"));
+    return new MediaError("missing");
   if (name === "NotReadableError" || name === "AbortError")
-    return new Error(t("call.errDeviceBusy"));
-  return new Error(t("call.errMedia"));
+    return new MediaError("busy");
+  return new MediaError("other");
 }
 
 export const callsSupported =
@@ -307,7 +332,6 @@ class Session {
   private screenTrack: MediaStreamTrack | null = null;
   private wakeLock: { release: () => Promise<void> } | null = null;
   private aloneSince = 0;
-  private token = "";
 
   constructor(
     public call: Call,
@@ -377,14 +401,24 @@ class Session {
       this.camera = false;
       this.notice = t("call.cameraFailed");
     }
+    await this.checkFlip();
+    this.watchTrack(this.local.getAudioTracks()[0]);
+  }
+
+  /** «Αλλαγή κάμερας» όταν υπάρχουν τουλάχιστον δύο κάμερες, μπροστινή και
+   *  πίσω: κινητό, tablet (και iPad, που λέει ότι είναι Mac), ή όποια
+   *  συσκευή δηλώνει από ποια πλευρά κοιτάει η κάμερά της. Πόσες κάμερες
+   *  υπάρχουν ο browser το λέει μόνο αφού δοθεί άδεια για την κάμερα, γι'
+   *  αυτό ξαναρωτάμε και όταν ανοίγει η κάμερα μέσα στην κλήση. */
+  private async checkFlip() {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      this.canFlip =
-        isMobile && devices.filter((d) => d.kind === "videoinput").length > 1;
+      const cameras = devices.filter((d) => d.kind === "videoinput").length;
+      const sides = this.cameraTrack?.getCapabilities?.().facingMode?.length || 0;
+      this.canFlip = cameras > 1 && (isMobile || sides > 0);
     } catch {
       this.canFlip = false;
     }
-    this.watchTrack(this.local.getAudioTracks()[0]);
   }
 
   /** Αν το σύστημα κλείσει το μικρόφωνο (π.χ. ήρθε κλήση GSM), να το ξέρουμε. */
@@ -401,8 +435,9 @@ class Session {
   async connect(ice: RTCIceServer[]): Promise<void> {
     this.ice = ice;
     this.device = await backend.ensureDevice();
-    this.token =
-      (await supabase?.auth.getSession())?.data.session?.access_token || "";
+    if (!accessToken)
+      accessToken =
+        (await supabase?.auth.getSession())?.data.session?.access_token || "";
     this.directory = await backend.conversationDevices(
       this.call.conversationId,
       true,
@@ -514,7 +549,9 @@ class Session {
             ? "busy"
             : call.endReason === "missed" && iAmCaller
               ? "noAnswer"
-              : "ended";
+              : call.endReason === "failed"
+                ? "failed"
+                : "ended";
       void this.end(reason, { leave: false });
       return;
     }
@@ -1055,6 +1092,7 @@ class Session {
         this.cameraTrack = track;
         this.camera = true;
         if (!this.screen) await this.replaceVideo(track);
+        if (!this.canFlip) await this.checkFlip();
       } catch (caught) {
         this.notice = mediaError(caught).message;
       }
@@ -1142,8 +1180,17 @@ class Session {
     this.screenTrack = null;
     void this.wakeLock?.release().catch(() => undefined);
     this.wakeLock = null;
-    if (options.leave !== false && this.call.id)
-      void backend.leaveCall(this.call.id).catch(() => undefined);
+    if (options.leave !== false && this.call.id) {
+      // Σήκωσαν, αλλά η σύνδεση δεν στήθηκε ποτέ: να μη μείνει στο ιστορικό
+      // ως κλήση που κράτησε 40''. (Μια κλήση που κόπηκε αργότερα κράτησε
+      // κανονικά, και κλείνει κανονικά.)
+      const id = this.call.id;
+      const leave =
+        reason === "failed" && !this.connectedAt
+          ? backend.failCall(id).catch(() => backend.leaveCall(id))
+          : backend.leaveCall(id);
+      void leave.catch(() => undefined);
+    }
     if (reason === "busy") {
       const stop = startTone("busy", 3000);
       window.setTimeout(stop, 3000);
@@ -1175,7 +1222,7 @@ class Session {
    *  περιμένουμε απάντηση (keepalive). Αλλιώς ο άλλος θα έβλεπε την κλήση να
    *  «κρέμεται» μέχρι να λήξει μόνη της. */
   leaveOnUnload(): void {
-    if (this.phase === "ended" || !this.call.id || !this.token || !supabaseUrl)
+    if (this.phase === "ended" || !this.call.id || !accessToken || !supabaseUrl)
       return;
     try {
       void fetch(`${supabaseUrl}/rest/v1/rpc/leave_call`, {
@@ -1183,7 +1230,7 @@ class Session {
         keepalive: true,
         headers: {
           apikey: supabaseAnonKey || "",
-          Authorization: `Bearer ${this.token}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ p_call: this.call.id }),
@@ -1207,6 +1254,12 @@ let sweepTimer: number | undefined;
 const fetching = new Map<string, boolean>();
 /** Κλήσεις που απάντησα ή απέρριψα: να μην ξαναχτυπήσουν αν φτάσει αργά κάποιο γεγονός. */
 const handled = new Set<string>();
+/** Το access token, πάντα το τελευταίο: η Supabase το ανανεώνει κάθε ~1 ώρα.
+ *  Όταν κλείνει η σελίδα δεν προλαβαίνουμε να το ζητήσουμε (δες leaveOnUnload),
+ *  και ένα κρατημένο από την αρχή της κλήσης θα είχε λήξει σε μια μεγάλη κλήση. */
+let accessToken = "";
+/** Ο έλεγχος «τι χτυπάει τώρα» που τρέχει ήδη, αν τρέχει. */
+let checking: Promise<void> | null = null;
 
 /** Η κλήση που τρέχει τώρα σε αυτή τη συσκευή ("" όσο ξεκινάει), ή null. Τιμή
  *  και όχι αντικείμενο: όποιος τη διαβάζει ξαναζωγραφίζεται μόνο όταν αλλάξει. */
@@ -1229,24 +1282,46 @@ export function chatOfCall(call: Call): Chat | undefined {
 
 export function startCalls(user: User): () => void {
   me = user;
-  callsChannel = backend.subscribeToCalls((id) => void refresh(id));
-  // Ό,τι χτυπάει ΤΩΡΑ (π.χ. άνοιξα το app από την ειδοποίηση, ή το ανανέωσα).
-  void backend
-    .listCalls(undefined, new Date(Date.now() - INCOMING_MAX_AGE).toISOString())
-    .then((list) => list.forEach(seen))
-    .catch(() => undefined);
+  // Ό,τι χτυπάει ΤΩΡΑ (π.χ. άνοιξα το app από την ειδοποίηση, ή το ανανέωσα),
+  // και ξανά κάθε φορά που το κανάλι (ξανα)συνδέεται: μια κλήση που ξεκίνησε
+  // ενώ συνδεόταν δεν θα ερχόταν ποτέ ως γεγονός.
+  callsChannel = backend.subscribeToCalls((id) => void refresh(id), checkRinging);
+  checkRinging();
   sweepTimer = window.setInterval(() => {
     for (const call of incoming.values())
       if (Date.now() - Date.parse(call.createdAt) > INCOMING_MAX_AGE)
         dropIncoming(call.id);
   }, 3000);
+  const auth = supabase?.auth.onAuthStateChange((_event, current) => {
+    accessToken = current?.access_token || "";
+  });
   const onUnload = () => session?.leaveOnUnload();
-  const onVisible = () => session?.onVisible();
+  // Πίσω μπροστά, ή πίσω στο δίκτυο: όσο έλειπε, το Realtime μπορεί να είχε
+  // κοπεί, και ό,τι έγινε τότε (π.χ. μια κλήση που χτυπάει) δεν ξανάρχεται.
+  const onVisible = () => {
+    session?.onVisible();
+    if (document.visibilityState === "visible") checkRinging();
+  };
+  const onBack = () => checkRinging();
+  // Έφτασε push για κλήση: ο service worker το λέει και στα ανοιχτά παράθυρα,
+  // για την περίπτωση που το Realtime δεν το έφερε.
+  const onWorker = (event: MessageEvent) => {
+    if (event.data?.type === "call-push" && typeof event.data.callId === "string")
+      void refresh(event.data.callId);
+  };
   window.addEventListener("pagehide", onUnload);
   document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("focus", onBack);
+  window.addEventListener("online", onBack);
+  navigator.serviceWorker?.addEventListener("message", onWorker);
   return () => {
     window.removeEventListener("pagehide", onUnload);
     document.removeEventListener("visibilitychange", onVisible);
+    window.removeEventListener("focus", onBack);
+    window.removeEventListener("online", onBack);
+    navigator.serviceWorker?.removeEventListener("message", onWorker);
+    auth?.data.subscription.unsubscribe();
+    accessToken = "";
     window.clearInterval(sweepTimer);
     backend.unsubscribe(callsChannel);
     callsChannel = null;
@@ -1256,6 +1331,21 @@ export function startCalls(user: User): () => void {
     me = null;
     emit();
   };
+}
+
+/** Όλες οι κλήσεις των τελευταίων 75'' από τη βάση: όποια χτυπάει για μένα
+ *  φαίνεται (μία φορά: το `incoming` και το `handled` κρατάνε τις υπόλοιπες
+ *  ήσυχες), όποια σταμάτησε φεύγει. Αν τρέχει ήδη ένας έλεγχος (το focus και
+ *  το visibilitychange έρχονται μαζί), δεύτερος δεν χρειάζεται. */
+function checkRinging(): void {
+  if (!me || checking) return;
+  checking = backend
+    .listCalls(undefined, new Date(Date.now() - INCOMING_MAX_AGE).toISOString())
+    .then((list) => list.forEach(seen))
+    .catch(() => undefined)
+    .finally(() => {
+      checking = null;
+    });
 }
 
 /** Πολλά γεγονότα για την ίδια κλήση (κλήση + κάθε συμμετέχων) γίνονται ένα
@@ -1353,9 +1443,10 @@ async function systemNotification(call: Call) {
 async function closeNotification(callId: string) {
   try {
     const reg = await navigator.serviceWorker?.getRegistration();
+    // Μόνο το «σε καλεί»· το «αναπάντητη» που μόλις έδειξε ο worker μένει.
     for (const n of (await reg?.getNotifications({ tag: `call:${callId}` })) ||
       [])
-      n.close();
+      if ((n.data as { ring?: boolean } | null)?.ring === true) n.close();
   } catch {
     // όπως πάνω
   }
@@ -1434,14 +1525,16 @@ export async function answer(callId: string, video: boolean): Promise<void> {
   s.phase = "connecting";
   session = s;
   emit();
+  let joined = false;
   try {
     await s.acquireMedia();
     if (s.ended()) return;
-    const [joined, ice] = await Promise.all([
+    const [answered, ice] = await Promise.all([
       backend.joinCall(callId),
       backend.iceServers(),
     ]);
-    s.call = joined;
+    joined = true;
+    s.call = answered;
     if (s.ended()) {
       void backend.leaveCall(callId).catch(() => undefined);
       return;
@@ -1450,15 +1543,28 @@ export async function answer(callId: string, video: boolean): Promise<void> {
     s.connectingSince = Date.now();
     emit();
   } catch (caught) {
+    // Η κλήση έκλεισε στο μεταξύ (την έκλεισα, ή ο άλλος): το τέλος της έχει
+    // ήδη γίνει, όπως έπρεπε.
+    if (s.ended()) return;
     const text = caught instanceof Error ? caught.message : "";
-    s.notice = /another device/i.test(text)
+    // Το data.ts έχει ήδη μεταφράσει το λάθος της βάσης (translateError):
+    // συγκρίνω με τα ίδια κείμενα, ώστε να πιάνει σε κάθε γλώσσα.
+    const elsewhere = text === t("call.answeredElsewhere");
+    const over = text === t("call.alreadyEnded");
+    s.notice = elsewhere
       ? t("call.answeredElsewhere")
-      : /has ended/i.test(text)
+      : over
         ? t("call.alreadyEnded")
-        : messageOf(caught);
-    await s.end(/another device/i.test(text) ? "elsewhere" : "error", {
-      leave: false,
-    });
+        : caught instanceof MediaError
+          ? t(ANSWER_TEXT[caught.problem])
+          : messageOf(caught);
+    // Δεν μπήκα τελικά (π.χ. δεν δόθηκε άδεια για το μικρόφωνο): απορρίπτω
+    // αμέσως. Αλλιώς ο άλλος θα άκουγε να χτυπάει 45'' και μετά θα έβλεπε
+    // «Δεν απάντησε», και οι άλλες συσκευές μου θα συνέχιζαν να χτυπάνε. Αν
+    // πρόλαβα να μπω, βγαίνω κανονικά.
+    if (!joined && !elsewhere && !over)
+      void backend.declineCall(callId).catch(() => undefined);
+    await s.end(elsewhere ? "elsewhere" : "error", { leave: joined });
   }
 }
 
@@ -1488,8 +1594,16 @@ subscribe(() => {
   const current = session;
   if (current?.phase === "ended" && !current.closing) {
     current.closing = true;
+    // Ένα σφάλμα με οδηγίες (π.χ. «δώσε άδεια για το μικρόφωνο») θέλει χρόνο
+    // για να διαβαστεί.
     const wait =
-      current.endReason === "hangup" ? 900 : current.notice ? 4000 : 2400;
+      current.endReason === "hangup"
+        ? 900
+        : current.notice
+          ? current.endReason === "error"
+            ? 8000
+            : 4000
+          : 2400;
     window.setTimeout(() => {
       if (session === current) {
         session = null;

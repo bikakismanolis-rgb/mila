@@ -26,7 +26,7 @@ delete from public.conversations;
 delete from public.user_devices;
 delete from public.rate_limit_events;
 update public.rate_limit_rules set max_count = 100000
-  where action in ('upload_media', 'device_register', 'call', 'contact_request', 'message');
+  where action in ('upload_media', 'upload_media_mb', 'device_register', 'call', 'contact_request', 'message');
 update public.profiles set show_online = true, read_receipts = true;
 "
 echo "έτοιμο"

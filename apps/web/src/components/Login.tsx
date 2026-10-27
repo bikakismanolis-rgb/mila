@@ -9,6 +9,7 @@ import {
   authRedirectUrl,
   passwordResetRedirectUrl,
   privacyPolicyUrl,
+  termsUrl,
 } from "../platform";
 import { lang, setLang, t, translateError } from "../i18n";
 
@@ -121,6 +122,24 @@ function LanguageSwitch() {
   );
 }
 
+/** «…αποδέχεσαι τους όρους χρήσης και την πολιτική απορρήτου.» Ανοίγουν σε
+ *  νέα καρτέλα, για να μη χαθεί ό,τι έχει ήδη γραφτεί στη φόρμα. */
+function LegalLinks({ before }: { before: string }) {
+  return (
+    <>
+      {before}{" "}
+      <a href={termsUrl} target="_blank" rel="noopener noreferrer">
+        {t("legal.terms")}
+      </a>{" "}
+      {t("legal.and")}{" "}
+      <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
+        {t("legal.privacy")}
+      </a>
+      .
+    </>
+  );
+}
+
 function Pitch() {
   return (
     <aside>
@@ -189,7 +208,7 @@ export function Login({
   const updateRecoveredPassword = () =>
     attempt(async () => {
       if (!supabase) throw new Error(t("err.notConfigured"));
-      if (newPassword.length < 6) throw new Error(t("err.passwordShort"));
+      if (newPassword.length < backend.MIN_PASSWORD) throw new Error(t("err.passwordShort"));
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
       });
@@ -205,7 +224,10 @@ export function Login({
       const normalizedEmail = email.trim().toLowerCase();
       if (!supabase) throw new Error(t("err.notConfigured"));
       if (!normalizedEmail) throw new Error(t("login.enterValidEmail"));
-      if (password.length < 6) throw new Error(t("err.passwordShort"));
+      // Το όριο ισχύει για νέους κωδικούς. Όποιος έχει ήδη μικρότερο (από πριν
+      // ανέβει το όριο) συνδέεται κανονικά.
+      if (authMode === "signin" ? !password : password.length < backend.MIN_PASSWORD)
+        throw new Error(t(authMode === "signin" ? "err.enterPassword" : "err.passwordShort"));
 
       if (authMode === "signin") {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -378,11 +400,7 @@ export function Login({
         </form>
         {authMode === "signup" && (
           <p className="consent">
-            {t("login.consentBefore")}{" "}
-            <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
-              {t("login.privacyPolicy")}
-            </a>
-            . {t("login.consentAfter")}
+            <LegalLinks before={t("legal.consentBefore")} /> {t("login.consentAfter")}
           </p>
         )}
         <div className="auth-choice">
@@ -423,6 +441,13 @@ export function Login({
             )}
             <div className="google-button" ref={googleButtonRef} />
             {google === "ready" && <p className="hint">{t("login.googleHint")}</p>}
+            {/* Με Google ένας νέος λογαριασμός φτιάχνεται και από τη «Σύνδεση»,
+                χωρίς να περάσει από τη φόρμα εγγραφής. */}
+            {authMode === "signin" && (
+              <p className="consent">
+                <LegalLinks before={t("legal.googleConsentBefore")} />
+              </p>
+            )}
           </>
         )}
         {notice && <p className="notice">{notice}</p>}

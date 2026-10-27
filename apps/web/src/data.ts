@@ -10,6 +10,7 @@ import { t, translateError } from "./i18n";
 import type { TKey } from "./i18n";
 import * as e2ee from "./e2ee";
 import type { DeviceKeys, E2ee, MessagePlain, Recipient } from "./e2ee";
+import { MAX_FILE } from "./limits";
 
 export type Privacy = {
   discover: "everyone" | "contacts" | "nobody";
@@ -36,9 +37,15 @@ export type User = {
   privacy: Privacy | null;
   /** «Σε σύνδεση» / «τελευταία φορά». null όταν δεν δικαιούμαι να το δω. */
   presence?: Presence | null;
+  /** Μόνο για τον εαυτό μου: ο λογαριασμός είναι σε αναστολή (0014). */
+  suspended?: Suspension | null;
 };
 
 export type Presence = { online: boolean; lastSeen: string | null };
+
+/** Πότε και γιατί ανεστάλη ο λογαριασμός. Την αιτία τη γράφουν οι συντονιστές
+ *  για να τη διαβάσει ο ίδιος. */
+export type Suspension = { at: string; reason: string | null };
 
 export type Member = User & { role?: "member" | "admin" };
 
@@ -182,9 +189,11 @@ export type Device = {
 
 const BUCKET = "message-media";
 const AVATARS = "avatars";
-const MAX_UPLOAD = 15 * 1024 * 1024;
 /** Πόσα μηνύματα έρχονται ανά σελίδα. Ίδιο με το default του list_messages. */
 export const PAGE_SIZE = 50;
+/** Ελάχιστο μήκος για ΝΕΟ κωδικό (εγγραφή, αλλαγή, επαναφορά). Η σύνδεση με
+ *  παλιό, μικρότερο κωδικό δουλεύει κανονικά. */
+export const MIN_PASSWORD = 8;
 
 function db() {
   if (!supabase) throw new Error(t("err.notConfigured"));
@@ -194,8 +203,38 @@ function db() {
 /** Πετάει σφάλμα στη γλώσσα του χρήστη. Το μήνυμα της βάσης, αν το ξέρουμε,
  *  μεταφράζεται· αλλιώς μπαίνει το γενικό μήνυμα της ενέργειας. */
 function fail(fallback: TKey, error: { message?: string } | null): never {
+  checkAccountOn(error);
   throw new Error(translateError(error?.message) || t(fallback));
 }
+
+/** Η βάση αρνήθηκε κάτι που ένας λογαριασμός σε αναστολή δεν μπορεί να κάνει
+ *  (αποστολή, κλήση, ή οτιδήποτε με «Account suspended»). Το main.tsx
+ *  ξανακοιτάζει το προφίλ (μία ανάγνωση) και, αν όντως είναι σε αναστολή,
+ *  δείχνει την οθόνη αναστολής αντί για ένα app που απλώς «χαλάει». */
+function checkAccountOn(error: { message?: string } | null) {
+  if (
+    /account suspended|not authenticated|cannot send messages|cannot call this/i.test(
+      error?.message || "",
+    )
+  )
+    window.dispatchEvent(new Event("mila:account-check"));
+}
+
+/** Σφάλμα αποστολής, με ό,τι χρειάζεται η ουρά αποστολής (outbox.ts):
+ *  retry  — αξίζει να ξαναδοκιμαστεί μόνο του (δίκτυο, όρια, κλειδιά που
+ *           άλλαξαν). Όχι όταν η απάντηση δεν θα αλλάξει (μπλοκαρισμένη
+ *           συνομιλία, πολύ μεγάλο αρχείο).
+ *  unsure — δεν ξέρουμε αν έφτασε (χάθηκε η απάντηση, έπεσε ο server). Τότε
+ *           δεν σβήνεται τίποτα: μπορεί το μήνυμα να γράφτηκε. */
+export type SendError = Error & { retry: boolean; unsure: boolean };
+
+function sendError(message: string, retry: boolean, unsure = false): SendError {
+  return Object.assign(new Error(message), { retry, unsure });
+}
+
+/** Ό,τι ξέρουμε ότι δεν θα περάσει όσες φορές κι αν ξαναδοκιμάσει. */
+const HOPELESS =
+  /cannot send messages to this conversation|message is too long|attachment does not belong|must be encrypted|not authenticated|account suspended/i;
 
 async function currentUserId(): Promise<string> {
   const { data } = await db().auth.getUser();
@@ -306,6 +345,8 @@ type ProfileRow = {
   show_email: Privacy["showEmail"];
   read_receipts: boolean;
   show_online: boolean;
+  suspended_at?: string | null;
+  suspended_reason?: string | null;
 };
 
 function toUser(row: ProfileRow): User {
@@ -326,6 +367,9 @@ function toUser(row: ProfileRow): User {
       receipts: row.read_receipts,
       online: row.show_online,
     },
+    suspended: row.suspended_at
+      ? { at: row.suspended_at, reason: row.suspended_reason || null }
+      : null,
   };
 }
 
@@ -777,7 +821,9 @@ export async function exportMyData(): Promise<unknown> {
   };
   if (payload?.messages?.some((m) => m.e2ee)) {
     const uid = await currentUserId();
-    const device = await ensureDevice();
+    // Σε αναστολή η βάση δεν δέχεται πια τη δήλωση της συσκευής, αλλά τα
+    // κλειδιά της είναι ακόμα εδώ και ανοίγουν τα δικά μου μηνύματα.
+    const device = await ensureDevice().catch(() => e2ee.loadOrCreateDevice(uid));
     payload.messages = await Promise.all(
       payload.messages.map(async ({ e2ee: box, ...rest }) => {
         if (!box) return rest;
@@ -788,7 +834,9 @@ export async function exportMyData(): Promise<unknown> {
       }),
     );
   }
-  // Το ιστορικό κλήσεων (ποιος, πότε, πόσο) είναι κι αυτό δικά σου δεδομένα.
+  // Το ιστορικό κλήσεων το δίνει πλέον η ίδια η βάση (0014)· από εδώ μόνο αν
+  // τρέχει ακόμα παλιότερη βάση.
+  if ((payload as { calls?: unknown }).calls) return payload;
   const calls = await listCalls().catch(() => []);
   return { ...payload, calls };
 }
@@ -959,7 +1007,7 @@ export async function uploadAttachment(
   conversationId: string,
   info: MediaInfo = {},
 ): Promise<NewAttachment> {
-  if (file.size > MAX_UPLOAD) throw new Error(t("err.fileTooLarge"));
+  if (file.size > MAX_FILE) throw sendError(t("err.fileTooLarge"), false);
 
   const uid = await currentUserId();
   const sealed = await e2ee.encryptFile(await file.arrayBuffer());
@@ -974,10 +1022,13 @@ export async function uploadAttachment(
       upsert: false,
     });
   if (error)
-    throw new Error(
+    throw sendError(
       /row-level security/i.test(error.message)
         ? t("err.limitUploads")
-        : translateError(error.message) || t("err.upload"),
+        : /maximum allowed size|too large/i.test(error.message)
+          ? t("err.fileTooLarge")
+          : translateError(error.message) || t("err.upload"),
+      !/maximum allowed size|too large/i.test(error.message),
     );
 
   return {
@@ -1016,6 +1067,11 @@ async function removeFiles(paths: string[]): Promise<void> {
   if (!paths.length) return;
   const { error } = await db().storage.from(BUCKET).remove(paths);
   if (error) console.warn("Could not remove files:", error.message);
+}
+
+/** Ένα αρχείο που ανέβηκε για μήνυμα που τελικά δεν θα σταλεί. */
+export function discardUpload(file: NewAttachment): Promise<void> {
+  return removeFiles([file.path]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1117,11 +1173,21 @@ export async function startChat(userId: string): Promise<string> {
 export async function sendMessage(
   conversationId: string,
   body: string,
-  options: { replyTo?: string; attachment?: NewAttachment; forwarded?: boolean } = {},
+  options: {
+    replyTo?: string;
+    attachment?: NewAttachment;
+    forwarded?: boolean;
+    /** Σε επανάληψη: το ίδιο με την πρώτη φορά, ώστε η βάση να μη γράψει το
+     *  μήνυμα δεύτερη φορά αν η πρώτη είχε τελικά περάσει. */
+    clientId?: string;
+    /** Το αρχείο μένει στο storage ακόμα κι αν αποτύχει: το κρατάει ο καλών
+     *  για να ξαναδοκιμάσει (outbox.ts). */
+    keepFile?: boolean;
+  } = {},
 ): Promise<void> {
   const uid = await sessionUserId();
   const device = await ensureDevice();
-  const clientId = crypto.randomUUID();
+  const clientId = options.clientId || crypto.randomUUID();
   const file = options.attachment;
   const plain: MessagePlain = { t: body };
   if (file) plain.f = plainFile(file);
@@ -1130,6 +1196,7 @@ export async function sendMessage(
   // Δύο προσπάθειες: αν στο μεταξύ μπήκε νέο μέλος ή νέα συσκευή, ο server
   // απαντάει «out of date» και ξανακρυπτογραφούμε με φρέσκια λίστα κλειδιών.
   let lastError: { message?: string } | null = null;
+  let lastStatus = 0;
   for (let attempt = 0; attempt < 2; attempt++) {
     const recipients = await recipientsFor(conversationId, attempt > 0);
     const sealed = await e2ee.encryptMessage(
@@ -1138,7 +1205,7 @@ export async function sendMessage(
       plain,
       recipients,
     );
-    const { error } = await db().rpc("send_message", {
+    const { error, status } = await db().rpc("send_message", {
       conversation: conversationId,
       body: sealed.envelope,
       client_id: clientId,
@@ -1151,13 +1218,22 @@ export async function sendMessage(
       return;
     }
     lastError = error;
+    lastStatus = status;
     if (!/out of date/i.test(error.message)) break;
   }
+  // Χωρίς απάντηση (status 0: δίκτυο) ή με σφάλμα του server (5xx), δεν
+  // ξέρουμε αν το μήνυμα γράφτηκε.
+  const unsure = lastStatus === 0 || lastStatus >= 500;
   // Το μήνυμα δεν γράφτηκε, άρα το αρχείο που ανέβηκε δεν θα το δείξει ποτέ
-  // κανείς. Το μαζεύουμε.
-  if (file) void removeFiles([file.path]);
+  // κανείς. Το μαζεύουμε — εκτός αν μπορεί να γράφτηκε, ή αν το κρατάει ο καλών.
+  if (file && !unsure && !options.keepFile) void removeFiles([file.path]);
   if (/unknown sending device/i.test(lastError?.message || "")) deviceFor = null;
-  fail("err.send", lastError);
+  checkAccountOn(lastError);
+  throw sendError(
+    translateError(lastError?.message) || t("err.send"),
+    !HOPELESS.test(lastError?.message || ""),
+    unsure,
+  );
 }
 
 /**
@@ -1422,18 +1498,26 @@ export async function listBlocked(): Promise<User[]> {
   return usersFrom(data);
 }
 
-export async function reportUser(
-  userId: string,
-  reason: string,
-): Promise<void> {
-  const uid = await currentUserId();
-  const { error } = await db()
-    .from("reports")
-    .insert({
-      reporter_id: uid,
-      reported_id: userId,
-      reason: reason.slice(0, 500),
-    });
+/**
+ * Αναφορά για μήνυμα (messageId), ομάδα (μόνο conversationId) ή άνθρωπο
+ * (userId). Το excerpt είναι κείμενο που ΗΔΗ βλέπει ο χρήστης και επέλεξε
+ * ρητά να σταλεί στους συντονιστές: χωρίς αυτό, δεν διαβάζουν τίποτα, αφού τα
+ * μηνύματα είναι κρυπτογραφημένα.
+ */
+export async function sendReport(report: {
+  reason: string;
+  userId?: string;
+  conversationId?: string;
+  messageId?: string;
+  excerpt?: string;
+}): Promise<void> {
+  const { error } = await db().rpc("submit_report", {
+    p_reason: report.reason.slice(0, 500),
+    p_user: report.userId ?? null,
+    p_conversation: report.conversationId ?? null,
+    p_message: report.messageId ?? null,
+    p_excerpt: report.excerpt?.slice(0, 4000) || null,
+  });
   if (error) fail("err.report", error);
 }
 
@@ -1460,6 +1544,13 @@ export async function removePushSubscription(endpoint: string): Promise<void> {
     p_endpoint: endpoint,
   });
   if (error) console.warn("Could not remove push subscription:", error.message);
+}
+
+/** «Αποσύνδεση παντού»: καμία συσκευή του λογαριασμού δεν παίρνει πια
+ *  ειδοποιήσεις (π.χ. ένα κινητό που χάθηκε). */
+export async function removeMyPushSubscriptions(): Promise<void> {
+  const { error } = await db().rpc("remove_my_push_subscriptions");
+  if (error) console.warn("Could not remove push subscriptions:", error.message);
 }
 
 /** Το δημόσιο κλειδί με το οποίο ο browser «δένει» τη συνδρομή του στο Mila. */
@@ -1500,6 +1591,8 @@ export async function joinCall(callId: string): Promise<Call> {
 
 export const declineCall = (callId: string) => callRpc("decline_call", { p_call: callId });
 export const leaveCall = (callId: string) => callRpc("leave_call", { p_call: callId });
+/** Σαν το leaveCall, όταν η σύνδεση δεν στήθηκε ποτέ: στο ιστορικό «δεν συνδέθηκε». */
+export const failCall = (callId: string) => callRpc("fail_call", { p_call: callId });
 export const callHeartbeat = (callId: string) => callRpc("call_heartbeat", { p_call: callId });
 
 export async function getCall(callId: string): Promise<Call | null> {
@@ -1546,8 +1639,12 @@ export async function iceServers(): Promise<{ servers: RTCIceServer[]; relay: bo
 }
 
 /** Νέα κλήση ή αλλαγή σε κλήση (απάντησε κάποιος, έκλεισε) σε συνομιλία μου.
- *  Το RLS φέρνει μόνο ό,τι αφορά τις δικές μου συνομιλίες. */
-export function subscribeToCalls(onChange: (callId: string) => void): RealtimeChannel {
+ *  Το RLS φέρνει μόνο ό,τι αφορά τις δικές μου συνομιλίες. Το onReady τρέχει
+ *  κάθε φορά που το κανάλι (ξανα)συνδέεται: ό,τι έγινε πριν δεν ξανάρχεται. */
+export function subscribeToCalls(
+  onChange: (callId: string) => void,
+  onReady?: () => void,
+): RealtimeChannel {
   const pick = (key: string) => (payload: { new?: unknown }) => {
     const row = payload.new as Record<string, unknown> | undefined;
     if (typeof row?.[key] === "string") onChange(row[key] as string);
@@ -1560,7 +1657,9 @@ export function subscribeToCalls(onChange: (callId: string) => void): RealtimeCh
       { event: "*", schema: "public", table: "call_participants" },
       pick("call_id"),
     );
-  channel.subscribe();
+  channel.subscribe((status) => {
+    if (status === "SUBSCRIBED") onReady?.();
+  });
   return channel;
 }
 
@@ -1570,9 +1669,12 @@ export function subscribeToCalls(onChange: (callId: string) => void): RealtimeCh
 
 export async function touchPresence(online: boolean): Promise<void> {
   try {
-    await db().rpc("touch_presence", { online });
+    const { error } = await db().rpc("touch_presence", { online });
+    // Δεν είναι λόγος να ενοχληθεί ο χρήστης. Είναι όμως ο πρώτος που μαθαίνει
+    // (μέσα σε 30'') ότι ο λογαριασμός μπήκε σε αναστολή.
+    if (error) checkAccountOn(error);
   } catch {
-    // Δεν είναι λόγος να ενοχληθεί ο χρήστης.
+    // Ούτε το δίκτυο.
   }
 }
 

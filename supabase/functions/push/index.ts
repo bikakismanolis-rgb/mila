@@ -10,9 +10,13 @@
 //      (push_targets) και στέλνουμε σε κάθε συσκευή. Συνδρομές που έχουν
 //      πεθάνει (404/410) σβήνονται.
 //   4. Για κλήσεις το ίδιο, με {action:"call", call_id, event} από το trigger
-//      του 0013 και push_call_targets.
+//      του 0013 και push_call_targets, και {action:"call-ended", call_id,
+//      user_id} από το 0015 (push_call_ended_targets) όταν σταματά να χτυπάει.
 //   5. {action:"ice"} από συνδεδεμένο χρήστη: οι servers που βοηθούν δύο
 //      συσκευές να βρεθούν (δες iceServers πιο κάτω).
+//   6. {action:"report", report_id} από το trigger του 0014: «Νέα αναφορά»
+//      στις συσκευές των συντονιστών (push_report_targets), χωρίς ονόματα και
+//      χωρίς κείμενο.
 //
 // ΧΩΡΙΣ ΧΕΙΡΟΚΙΝΗΤΑ ΜΥΣΤΙΚΑ: τα κλειδιά VAPID φτιάχνονται εδώ την πρώτη φορά και
 // φυλάσσονται στον πίνακα push_config, που τον διαβάζει μόνο το service role.
@@ -422,7 +426,10 @@ async function cloudflareTurn(): Promise<IceServer[]> {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ ttl: ICE_TTL }),
-    }).catch(() => null);
+    }).catch((error) => {
+      console.error("cloudflare turn unreachable:", String(error));
+      return null;
+    });
     if (!response) return [];
     if (response.status === 404) continue;
     if (!response.ok) {
@@ -433,6 +440,9 @@ async function cloudflareTurn(): Promise<IceServer[]> {
     const list = Array.isArray(data.iceServers) ? data.iceServers : data.iceServers ? [data.iceServers] : [];
     return list.map(withoutPort53).filter((s) => (s.urls as string[]).length);
   }
+  // 404 και στις δύο διευθύνσεις: σχεδόν πάντα λάθος αναγνωριστικό κλειδιού.
+  // Να φαίνεται στα logs· αλλιώς οι κλήσεις πίσω από NAT αποτυγχάνουν σιωπηλά.
+  console.error("cloudflare turn: 404 on generate-ice-servers and generate; check CLOUDFLARE_TURN_KEY_ID");
   return [];
 }
 
@@ -529,20 +539,36 @@ export async function handler(request: Request): Promise<Response> {
       return json(await sendAll(targets, config));
     }
 
-    if (body?.action === "call" && typeof body.call_id === "string") {
+    // «call»: σε καλεί / αναπάντητη, σε όλους όσους αφορά (0013).
+    // «call-ended»: σε έναν άνθρωπο που σήκωσε ή απέρριψε, ώστε να φύγει η
+    // «Εισερχόμενη κλήση» από τις άλλες συσκευές του (0015).
+    if (
+      (body?.action === "call" || body?.action === "call-ended") &&
+      typeof body.call_id === "string"
+    ) {
       const config = await configWithKeys();
       const given = request.headers.get("x-mila-secret") || "";
       if (!sameSecret(given, config.webhook_secret))
         return json({ error: "forbidden" }, 403);
 
-      const event = body.event === "missed" ? "missed" : "ring";
+      const ended = body.action === "call-ended";
+      if (ended && typeof body.user_id !== "string")
+        return json({ error: "user_id missing" }, 400);
+      const event = ended ? "ended" : body.event === "missed" ? "missed" : "ring";
       const targets = await rpc<{
         payload: unknown;
         subscriptions: Subscription[];
-      } | null>("push_call_targets", { p_call: body.call_id, p_event: event });
+      } | null>(
+        ended ? "push_call_ended_targets" : "push_call_targets",
+        ended
+          ? { p_call: body.call_id, p_user: body.user_id }
+          : { p_call: body.call_id, p_event: event },
+      );
       return json(
         await sendAll(targets, config, {
           ttl: event === "ring" ? 45 : 86400,
+          // Ίδιο topic για όλα τα push μιας κλήσης: ένα «τέλος» ή «αναπάντητη»
+          // παίρνει τη θέση ενός «σε καλεί» που δεν έχει παραδοθεί ακόμα.
           topic: body.call_id.replace(/[^A-Za-z0-9]/g, "").slice(0, 32),
         }),
       );
@@ -552,6 +578,21 @@ export async function handler(request: Request): Promise<Response> {
       const userId = await signedInUser(request);
       if (!userId) return json({ error: "sign in first" }, 401);
       return json(await iceServers(userId));
+    }
+
+    if (body?.action === "report" && typeof body.report_id === "string") {
+      const config = await configWithKeys();
+      const given = request.headers.get("x-mila-secret") || "";
+      if (!sameSecret(given, config.webhook_secret))
+        return json({ error: "forbidden" }, 403);
+
+      const targets = await rpc<{
+        payload: unknown;
+        subscriptions: Subscription[];
+      } | null>("push_report_targets", { p_report: body.report_id });
+      // Όλες οι αναφορές με το ίδιο topic: δέκα αναφορές όσο ήταν κλειστό το
+      // κινητό φτάνουν ως μία ειδοποίηση, όχι δέκα.
+      return json(await sendAll(targets, config, { topic: "mila-report" }));
     }
 
     return json({ error: "unknown action" }, 400);

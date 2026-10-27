@@ -54,10 +54,12 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 - Mute, pin (up to 3) and archive chats; unread divider; an emoji picker on desktop; unread count on the app icon
 - Email and password sign-in, Google Sign-In, profiles with an optional photo
 - People search that never lists strangers: they show up only for their exact, full email
-- One-to-one and group conversations, message requests, accept and reject, blocking and reporting
+- One-to-one and group conversations, message requests, accept and reject, blocking
+- Reporting a message, a group or a person; the reporter may choose to forward the text, since nobody else can read it. Moderators get a content-free push, and accounts can be suspended (see `docs/MODERATION.md`)
 - End-to-end encrypted messages and attachments (see below)
 - Realtime messages, typing indicators, read receipts and unread badges
-- Photo and file attachments up to 15 MB
+- Photo, video and file attachments up to 50 MB; large videos are made smaller (about 720p) in the browser before sending
+- Messages, photos, voice notes and files that fail to send stay in the chat as "not sent", retry by themselves when the connection is back, and are never sent twice
 - Rate limits on messages, new conversations, email lookups, sign-ups, uploads, reactions and reports
 - Consent-based CSV and vCard contact matching using email hashes
 - Privacy settings and a responsive mobile and desktop UI
@@ -65,14 +67,19 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 ## Tests
 
 ```bash
-npm test                              # encryption, call handshake sealing, Web Push (RFC 8291), TURN credentials
+npm test                              # encryption, call handshake sealing, Web Push (RFC 8291), TURN credentials, attachment size limits
 supabase/tests/run.sh                 # every migration on a fresh Postgres, then RLS, limit and call tests
 npm run e2e                           # two and three real browsers against a local Supabase: chat, voice, calls
+node scripts/serve-dist.mjs --check   # both vercel.json files agree, security headers, no inline code in static pages
 ```
 
 `npm run e2e` needs a local stack (`supabase start` with the migrations applied), the dev server on `http://localhost:5173` pointed at it, and a Chromium (`CHROME=/path/to/chrome`). It uses fake camera and microphone devices, creates three local accounts, and refuses to touch a database that is not on localhost.
 
 `supabase/tests/run.sh` needs a PostgreSQL 15+ server you can create databases on (set `PGHOST`, `PGPORT`, `PGUSER`). It applies all migrations to a fake Supabase (`supabase/tests/supabase_shim.sql`) and runs each `test_*.sql` as real users, through the same RPCs the browser calls.
+
+The Vite dev server does not send the `vercel.json` headers. To test the Content-Security-Policy, build for the local stack and serve the build the way Vercel does: `node scripts/serve-dist.mjs --port 4173 --supabase http://127.0.0.1:54321` (the flag swaps the production Supabase origin in the CSP for the local one). Then run any e2e suite with `E2E_BASE=http://localhost:4173`, and `scripts/e2e/csp.mjs`, which fails on any CSP violation.
+
+CI (`.github/workflows/ci.yml`) runs typecheck, build, `npm test`, the header check and the database tests on every pull request and every push to `master`.
 
 ## Security status
 
@@ -111,6 +118,7 @@ update public.rate_limit_rules set max_count = 50 where action = 'message' and w
 | `contact_import` / `contact_match` | 5 files, 1000 addresses a day |
 | `signup` (whole app) | 60 an hour, 500 a day |
 | `upload_media` / `upload_avatar` | 60 an hour and 300 a day / 20 a day |
+| `upload_media_mb` (total size of attachments) | 300 MB an hour, 1000 MB a day |
 | `call` | 30 an hour, 200 a day |
 | `reaction`, `report`, `group_create`, `group_add`, `device_register`, `avatar_change` | see the migration |
 
@@ -118,12 +126,20 @@ Supabase Auth has its own per-IP limits on top (Authentication → Rate Limits i
 
 ## Before launch
 
-1. Custom SMTP. The built-in Supabase mailer only delivers to organisation members and allows two messages an hour.
+Done:
+
+- Custom SMTP. Resend (`smtp.resend.com`) sends account email from `noreply@milamessenger.com`, and "Confirm email" is on, so nobody can register an address they do not own.
+- Terms of use (`/terms`) and a privacy policy (`/privacy`), each in Greek and English, linked from sign-up, Settings and the landing page.
+- Moderation tools: reports, a content-free push to moderators for each new report, and account suspension. See `docs/MODERATION.md`.
+- Security headers in `vercel.json` (Content-Security-Policy, `frame-ancestors 'none'`, nosniff, Referrer-Policy, a Permissions-Policy that keeps camera, microphone and screen sharing), checked in CI.
+
+Still to do:
+
 1. A TURN relay for calls. Without one, calls between two mobile networks that both use carrier-grade NAT can fail to connect. Cloudflare's TURN service has a free tier: set `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` as secrets of the `push` Edge Function (or `TURN_URLS` with `TURN_SECRET` for your own coturn). See `docs/NEXT-STEPS.md`.
-2. Turn "Confirm email" back on. It is off for local testing, which lets anyone register an address they do not own.
-3. Upload scanning is impossible for encrypted files by design; storage quotas and retention still need a decision.
-4. Abuse review tooling for the reports table. Reported messages are encrypted, so a report can only carry what the reporter chooses to forward.
-5. Accessibility audit and terms of use.
+2. The owner's name and contact email in the terms and the privacy policy (`[FULL NAME]`, `[CONTACT EMAIL]`).
+3. Add yourself as a moderator and read `docs/MODERATION.md` (reports, suspension, the EU Digital Services Act in plain words). In Supabase Auth set the minimum password length to 8 (Authentication → Providers → Email), matching the app.
+4. Storage quotas and retention. The Free plan has 1 GB of file storage and an attachment can be 50 MB. Upload scanning is impossible for encrypted files by design.
+5. An accessibility audit.
 6. Forward secrecy for the encryption (see Security status).
 
 ## Account deletion
@@ -134,4 +150,4 @@ That tombstone exists so `messages.sender_id`, `conversations.created_by` and `r
 
 The trade is real and belongs in the privacy policy: the server keeps someone's words after they asked to leave. A formal GDPR erasure request needs those messages deleted by hand.
 
-`export_my_data()` returns the caller's profile, conversation list and own messages as JSON. It deliberately excludes the other party's messages — those are someone else's personal data.
+`export_my_data()` returns the caller's profile, devices, conversation list (with their role and read position), own messages, calls, chat settings, reactions, delivery and read times, messages hidden for them, usage counters, blocks and the reports they filed, as JSON. It deliberately excludes the other party's messages — those are someone else's personal data.

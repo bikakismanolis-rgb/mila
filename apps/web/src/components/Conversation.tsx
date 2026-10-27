@@ -9,6 +9,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   Archive,
@@ -37,16 +38,19 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 import * as backend from "../data";
 import type { Call, Chat, MediaInfo, Member, Msg, Presence, User } from "../data";
 import * as calls from "../calls";
+import * as outbox from "../outbox";
 import { t, translateError } from "../i18n";
 import { dayKey, dayLabel, lastSeenText } from "../format";
-import { ConfirmDialog, Empty, Modal, PromptDialog } from "./common";
+import { ConfirmDialog, Empty, Modal } from "./common";
 import { GroupInfoDialog } from "./Groups";
-import { Bubble, editable } from "./Bubble";
+import { Bubble, PendingBubble, editable } from "./Bubble";
 import { Composer } from "./Composer";
 import { ForwardDialog, MediaViewer, SendFilesDialog, isVisual } from "./Media";
 import type { Prepared } from "./Media";
 import { CallEntry } from "./CallsTab";
 import { clock, useActiveCallId } from "./Call";
+import { ReportDialog } from "./Report";
+import type { ReportTarget } from "./Report";
 
 const messageOf = (caught: unknown) =>
   translateError(caught instanceof Error ? caught.message : String(caught)) ||
@@ -166,8 +170,9 @@ export function Conversation({
     [pendingFiles, setPendingFiles] = useState<{ files: File[]; caption: string } | null>(null),
     [headerMenu, setHeaderMenu] = useState(false),
     [dialog, setDialog] = useState<
-      "details" | "report" | "block" | "group" | "mute" | null
+      "details" | "block" | "group" | "mute" | null
     >(null),
+    [reporting, setReporting] = useState<ReportTarget | null>(null),
     [highlight, setHighlight] = useState<string | null>(null),
     [presence, setPresence] = useState<Presence | null>(null),
     [unreadFrom, setUnreadFrom] = useState<{ id: string; count: number } | null>(null),
@@ -348,14 +353,19 @@ export function Conversation({
       typingTimer.current = window.setTimeout(() => setTyping(null), 6000);
     });
 
-    // Γύρισε στο app μετά από ώρα: φέρε ό,τι έχασε και σήμανέ τα διαβασμένα.
+    // Γύρισε στο app μετά από ώρα: φέρε ό,τι έχασε και σήμανέ τα διαβασμένα,
+    // και ξαναδοκίμασε ό,τι δεν είχε φύγει.
     const onVisible = () => {
-      if (document.visibilityState === "visible") void refreshLatest();
+      if (document.visibilityState !== "visible") return;
+      void refreshLatest();
+      outbox.retryFailed(id);
     };
     document.addEventListener("visibilitychange", onVisible);
     // Παραδόθηκαν κλειδιά για μηνύματα σε αναμονή, ή ήρθε κλειδί για εμένα.
     const onKeys = () => void refreshLatest();
     window.addEventListener("mila:keys-delivered", onKeys);
+    // Άνοιξε η συνομιλία: ό,τι είχε μείνει απεσταλμένο ξαναδοκιμάζεται.
+    outbox.retryFailed(id);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
@@ -378,6 +388,37 @@ export function Conversation({
   useEffect(() => {
     if (loaded && lastCallStamp) void loadCalls();
   }, [lastCallStamp, loaded, loadCalls]);
+
+  // Ό,τι δεν έφυγε ακόμα (outbox.ts). Μόλις φτάσει το κανονικό μήνυμα (ίδιο
+  // client_id), αυτό παίρνει τη θέση του και το προσωρινό φεύγει.
+  const queue = useSyncExternalStore(outbox.subscribe, outbox.snapshot);
+  const arrived = useMemo(
+    () =>
+      new Set(
+        messages
+          .filter((m) => m.senderId === me.id && m.e2ee?.clientId)
+          .map((m) => m.e2ee!.clientId),
+      ),
+    [messages, me.id],
+  );
+  const pending = useMemo(
+    () => queue.filter((p) => p.conversationId === chat.id && !arrived.has(p.id)),
+    [queue, chat.id, arrived],
+  );
+  useEffect(() => {
+    for (const p of queue) if (p.conversationId === chat.id && arrived.has(p.id)) outbox.forget(p.id);
+  }, [queue, chat.id, arrived]);
+  // Κάτι έφυγε (και από αυτόματη επανάληψη): φέρνουμε το κανονικό μήνυμα.
+  const justSent = pending
+    .filter((p) => p.state === "sent")
+    .map((p) => p.id)
+    .join();
+  useEffect(() => {
+    if (!justSent) return;
+    setUnreadFrom(null);
+    void refreshLatest(true).then(onChanged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [justSent]);
 
   // «Σε σύνδεση» / «τελευταία φορά»: από τη λίστα, και ανανέωση κάθε 30''.
   useEffect(() => {
@@ -409,7 +450,7 @@ export function Conversation({
       nearBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
     }
     scrollPlan.current = "none";
-  }, [messages, typing, callLog]);
+  }, [messages, typing, callLog, pending.length]);
 
   function onScroll() {
     const el = scroller.current;
@@ -487,19 +528,23 @@ export function Conversation({
   // Ενέργειες
   // -------------------------------------------------------------------------
 
+  /** Μπαίνει αμέσως στη συνομιλία και φεύγει από την ουρά (outbox.ts). Αν δεν
+   *  φύγει, μένει εκεί ως «δεν στάλθηκε» και ξαναδοκιμάζεται. */
   async function send(body: string, reply: Msg | null): Promise<boolean> {
-    try {
-      await backend.sendMessage(chat.id, body, { replyTo: reply?.id });
-      setUnreadFrom(null);
-      await refreshLatest(true);
-      onChanged();
-      return true;
-    } catch (caught) {
-      // Να μη χαθεί αυτό που έγραψε.
+    setUnreadFrom(null);
+    scrollPlan.current = "bottom";
+    const item = outbox.add(chat.id, body, { replyTo: reply });
+    if (await outbox.send(item.id)) return true;
+    const failed = outbox.find(item.id);
+    if (failed && !failed.retry) {
+      // Δεν θα περάσει όσες φορές κι αν ξαναδοκιμάσει (π.χ. μπλοκαρισμένη
+      // συνομιλία): το κείμενο γυρίζει στο πεδίο, να μη χαθεί αυτό που έγραψε.
+      outbox.remove(item.id);
       setReplyTo(reply);
-      notify(messageOf(caught));
+      notify(failed.error);
       return false;
     }
+    return true;
   }
 
   async function saveEdit(message: Msg, body: string): Promise<boolean> {
@@ -514,44 +559,42 @@ export function Conversation({
     }
   }
 
-  /** Ένα-ένα, με τη λεζάντα στο πρώτο. Αν σπάσει κάποιο, τα υπόλοιπα συνεχίζουν. */
+  /** Όλα μπαίνουν αμέσως στη συνομιλία και φεύγουν ένα-ένα, με τη λεζάντα
+   *  στο πρώτο. Αν σπάσει κάποιο, μένει ως «δεν στάλθηκε» και τα υπόλοιπα
+   *  συνεχίζουν. */
   async function sendFiles(items: Prepared[], caption: string) {
     setPendingFiles(null);
     const reply = replyTo;
     setReplyTo(null);
-    let failed = 0;
-    for (let i = 0; i < items.length; i++) {
+    setUnreadFrom(null);
+    scrollPlan.current = "bottom";
+    const queued = items.map((item, i) =>
+      outbox.add(chat.id, i === 0 ? caption : "", {
+        file: item.file,
+        info: item.info,
+        replyTo: i === 0 ? reply : null,
+      }),
+    );
+    for (let i = 0; i < queued.length; i++) {
       setBusy(
-        items.length > 1
-          ? t("chat.sendingN", { i: i + 1, n: items.length })
+        queued.length > 1
+          ? t("chat.sendingN", { i: i + 1, n: queued.length })
           : t("chat.uploading"),
       );
-      try {
-        const attachment = await backend.uploadAttachment(items[i].file, chat.id, items[i].info);
-        await backend.sendMessage(chat.id, i === 0 ? caption : "", {
-          attachment,
-          replyTo: i === 0 ? reply?.id : undefined,
-        });
-        await refreshLatest(true);
-      } catch (caught) {
-        failed++;
-        notify(messageOf(caught));
-      }
+      await outbox.send(queued[i].id);
     }
     setBusy("");
-    if (failed < items.length) onChanged();
   }
 
   async function sendVoice(file: File, info: MediaInfo) {
+    const reply = replyTo;
+    setReplyTo(null);
+    setUnreadFrom(null);
+    scrollPlan.current = "bottom";
+    const item = outbox.add(chat.id, "", { file, info, replyTo: reply });
     setBusy(t("chat.uploading"));
     try {
-      const attachment = await backend.uploadAttachment(file, chat.id, info);
-      await backend.sendMessage(chat.id, "", { attachment, replyTo: replyTo?.id });
-      setReplyTo(null);
-      await refreshLatest(true);
-      onChanged();
-    } catch (caught) {
-      notify(messageOf(caught));
+      await outbox.send(item.id);
     } finally {
       setBusy("");
     }
@@ -767,9 +810,14 @@ export function Conversation({
               <div className="click-away" onClick={() => setHeaderMenu(false)} />
               <div className="menu-popover" onClick={() => setHeaderMenu(false)}>
                 {isGroup ? (
-                  <button onClick={() => setDialog("group")}>
-                    <Users /> {t("group.info")}
-                  </button>
+                  <>
+                    <button onClick={() => setDialog("group")}>
+                      <Users /> {t("group.info")}
+                    </button>
+                    <button className="danger" onClick={() => setReporting({ kind: "group" })}>
+                      <Flag /> {t("report.group")}
+                    </button>
+                  </>
                 ) : (
                   other &&
                   !other.deleted && (
@@ -823,7 +871,7 @@ export function Conversation({
                     )}
                     <button
                       className="danger"
-                      onClick={() => setDialog("report")}
+                      onClick={() => setReporting({ kind: "person", person: other })}
                     >
                       <Flag /> {t("chat.report")}
                     </button>
@@ -868,7 +916,7 @@ export function Conversation({
           </button>
         )}
 
-        {loaded && !items.length && !incomingRequest && (
+        {loaded && !items.length && !pending.length && !incomingRequest && (
           <Empty
             icon={<Send />}
             title={t("chat.emptyTitle")}
@@ -942,6 +990,10 @@ export function Conversation({
                   setMenuFor(null);
                   setForwarding(m);
                 }}
+                onReport={() => {
+                  setMenuFor(null);
+                  setReporting({ kind: "message", message: m });
+                }}
                 onQuoteClick={(id) => void goTo(id)}
                 onMediaLoad={onMediaLoad}
                 onOpenMedia={() => setViewing(m.id)}
@@ -956,6 +1008,16 @@ export function Conversation({
             </React.Fragment>
           );
         })}
+
+        {pending.map((p) => (
+          <PendingBubble
+            key={`p-${p.id}`}
+            item={p}
+            nameOf={nameOf}
+            onRetry={() => void outbox.send(p.id)}
+            onDelete={() => outbox.remove(p.id)}
+          />
+        ))}
 
         {typing && (
           <div className="bubble typing">
@@ -1132,6 +1194,19 @@ export function Conversation({
             )}
           </div>
           <SafetyCode person={other} />
+          {!other.deleted && (
+            <div className="contact-actions">
+              <button
+                className="secondary report"
+                onClick={() => {
+                  setDialog(null);
+                  setReporting({ kind: "person", person: other });
+                }}
+              >
+                <Flag size={16} /> {t("chat.report")}
+              </button>
+            </div>
+          )}
         </Modal>
       )}
 
@@ -1149,18 +1224,15 @@ export function Conversation({
         />
       )}
 
-      {dialog === "report" && other && (
-        <PromptDialog
-          title={t("chat.reportTitle", { name: other.name })}
-          text={t("chat.reportText")}
-          placeholder={t("chat.reportPlaceholder")}
-          confirmLabel={t("chat.reportSend")}
-          multiline
-          onSubmit={async (reason) => {
-            await backend.reportUser(other.id, reason);
-            notify(t("chat.reportThanks"));
-          }}
-          close={() => setDialog(null)}
+      {reporting && (
+        <ReportDialog
+          target={reporting}
+          chat={chat}
+          me={me}
+          messages={messages}
+          nameOf={nameOf}
+          done={() => notify(t("chat.reportThanks"))}
+          close={() => setReporting(null)}
         />
       )}
 
