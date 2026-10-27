@@ -1100,7 +1100,7 @@ set search_path = public
 as $$
   select jsonb_build_object(
     'exported_at', now(),
-    'format_version', 3,
+    'format_version', 4,
     'profile', (
       select jsonb_build_object(
         'email', p.email,
@@ -1123,7 +1123,8 @@ as $$
         'suspension', case when p.suspended_at is not null then jsonb_build_object(
           'suspended_at', p.suspended_at,
           'reason', p.suspended_reason
-        ) end
+        ) end,
+        'moderator', exists (select 1 from moderators mo where mo.user_id = auth.uid())
       )
       from profiles p where p.id = auth.uid()
     ),
@@ -1147,6 +1148,9 @@ as $$
         'name', c.name,
         'created_at', c.created_at,
         'joined_at', cm.joined_at,
+        'role', cm.role,
+        'last_read_at', cm.last_read_at,
+        'last_delivered_at', cm.last_delivered_at,
         'participants', (
           select jsonb_agg(other.display_name)
           from conversation_members om
@@ -1209,6 +1213,44 @@ as $$
       from call_participants mine
       join calls c on c.id = mine.call_id
       where mine.user_id = auth.uid()
+    ), '[]'::jsonb),
+    -- Τα δικά μου ίχνη σε μηνύματα (και των άλλων): αντιδράσεις, πότε μου
+    -- παραδόθηκε και πότε διάβασα κάθε μήνυμα, τι έσβησα «για μένα».
+    'reactions', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'message_id', r.message_id,
+        'conversation_id', r.conversation_id,
+        'emoji', r.emoji,
+        'updated_at', r.updated_at
+      ) order by r.updated_at)
+      from message_reactions r
+      where r.user_id = auth.uid() and r.emoji is not null
+    ), '[]'::jsonb),
+    'receipts', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'message_id', rc.message_id,
+        'conversation_id', m.conversation_id,
+        'delivered_at', rc.delivered_at,
+        'read_at', rc.read_at
+      ) order by m.created_at)
+      from message_receipts rc
+      join messages m on m.id = rc.message_id
+      where rc.user_id = auth.uid()
+    ), '[]'::jsonb),
+    'hidden_messages', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'message_id', h.message_id,
+        'hidden_at', h.hidden_at
+      ) order by h.hidden_at)
+      from message_hidden h where h.user_id = auth.uid()
+    ), '[]'::jsonb),
+    -- Οι μετρητές για τα όρια χρήσης (μένουν 31 ημέρες): μόνο τι και πότε.
+    'usage_events', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'action', e.action,
+        'at', e.created_at
+      ) order by e.created_at)
+      from rate_limit_events e where e.subject = auth.uid()
     ), '[]'::jsonb),
     'blocked_users', coalesce((
       select jsonb_agg(b.blocked_id)

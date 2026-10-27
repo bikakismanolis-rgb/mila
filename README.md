@@ -150,4 +150,4 @@ That tombstone exists so `messages.sender_id`, `conversations.created_by` and `r
 
 The trade is real and belongs in the privacy policy: the server keeps someone's words after they asked to leave. A formal GDPR erasure request needs those messages deleted by hand.
 
-`export_my_data()` returns the caller's profile, conversation list and own messages as JSON. It deliberately excludes the other party's messages — those are someone else's personal data.
+`export_my_data()` returns the caller's profile, devices, conversation list (with their role and read position), own messages, calls, chat settings, reactions, delivery and read times, messages hidden for them, usage counters, blocks and the reports they filed, as JSON. It deliberately excludes the other party's messages — those are someone else's personal data.

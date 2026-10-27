@@ -509,13 +509,42 @@ reset role;
 insert into push_subscriptions (user_id, endpoint, p256dh, auth)
 values (:jon, 'https://fcm.googleapis.com/fcm/send/jon-device-000000000000', repeat('p', 87), repeat('a', 22));
 insert into moderators (user_id) values (:jon);
+-- Ίχνη της Fay στο μήνυμα του Gus: αντίδραση, παράδοση και ανάγνωση, «σβήσιμο για μένα».
+insert into message_reactions (message_id, conversation_id, user_id, emoji)
+values (:'m_gus', :'fg', :fay, '👍')
+on conflict (message_id, user_id) do update set emoji = excluded.emoji;
+insert into message_receipts (message_id, user_id, delivered_at, read_at)
+values (:'m_gus', :fay, now() - interval '1 minute', now())
+on conflict (message_id, user_id) do update set delivered_at = excluded.delivered_at, read_at = excluded.read_at;
+insert into message_hidden (message_id, user_id) values (:'m_gus', :fay) on conflict do nothing;
 
 select set_config('request.jwt.claim.sub', :fay, false);
 set role authenticated;
 select set_conversation_prefs(:'fg', '{"archived": true}');
 select export_my_data() as fay_export \gset
 reset role;
-select test.ok((:'fay_export'::jsonb)->>'format_version' = '3', 'new export format');
+select test.ok((:'fay_export'::jsonb)->>'format_version' = '4', 'new export format');
+select test.ok((:'fay_export'::jsonb)->'reactions' @> jsonb_build_array(
+  jsonb_build_object('message_id', :'m_gus', 'conversation_id', :'fg', 'emoji', '👍')),
+  'export has my reactions');
+select test.ok(exists (
+  select 1 from jsonb_array_elements((:'fay_export'::jsonb)->'receipts') r
+  where r->>'message_id' = :'m_gus' and r->>'delivered_at' is not null and r->>'read_at' is not null
+), 'export has when I got and read messages');
+select test.ok((:'fay_export'::jsonb)->'hidden_messages' @> jsonb_build_array(
+  jsonb_build_object('message_id', :'m_gus')), 'export has what I deleted for me');
+select test.ok(exists (
+  select 1 from jsonb_array_elements((:'fay_export'::jsonb)->'usage_events') e where e->>'action' = 'message'
+), 'export has my usage counters');
+select test.ok(exists (
+  select 1 from jsonb_array_elements((:'fay_export'::jsonb)->'conversations') c
+  where c->>'id' = :'fg' and c->>'role' is not null and c ? 'last_read_at'
+), 'export has my role and read position in each chat');
+select test.ok(((:'fay_export'::jsonb)->'profile'->>'moderator')::boolean = false, 'export says I am not a moderator');
+select set_config('request.jwt.claim.sub', :jon, false);
+set role authenticated;
+select test.ok((export_my_data()->'profile'->>'moderator')::boolean, 'and says so for a moderator');
+reset role;
 select test.ok(exists (
   select 1 from jsonb_array_elements((:'fay_export'::jsonb)->'calls') c
   where c->>'conversation_id' = :'fj' and not (c->>'i_called')::boolean
