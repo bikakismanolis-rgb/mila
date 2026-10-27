@@ -266,8 +266,9 @@
         <h2>Ποιοι άλλοι αγγίζουν τα δεδομένα σου</h2>
         <p>
           Είμαστε μικροί και δεν έχουμε δικούς μας servers. Οι παρακάτω εταιρείες
-          επεξεργάζονται δεδομένα για λογαριασμό μας, με σύμβαση, και δεν
-          επιτρέπεται να τα χρησιμοποιήσουν για δικούς τους σκοπούς.
+          (Supabase, Vercel, Resend, Cloudflare) επεξεργάζονται δεδομένα για
+          λογαριασμό μας, με σύμβαση επεξεργασίας δεδομένων, και δεν επιτρέπεται
+          να τα χρησιμοποιήσουν για δικούς τους σκοπούς.
         </p>
         <table>
           <tr>
@@ -293,23 +294,38 @@
             </td>
           </tr>
           <tr>
-            <th>Google</th>
+            <th>Cloudflare (σύνδεση κλήσεων)</th>
+            <td>
+              Όταν ξεκινά μια κλήση, κάθε συσκευή ρωτάει έναν δημόσιο server
+              «STUN» ποια είναι η δική της διεύθυνση στο διαδίκτυο, για να βρουν
+              οι δύο συσκευές η μία την άλλη. Αυτός ο server βλέπει τη διεύθυνση
+              IP σου και τίποτε άλλο. Όταν δύο δίκτυα δεν επιτρέπουν απευθείας
+              σύνδεση, η κλήση περνάει από τον αναμεταδότη (TURN) της Cloudflare.
+              Ο αναμεταδότης μεταφέρει δεδομένα που είναι ήδη κρυπτογραφημένα από
+              άκρη σε άκρη, οπότε βλέπει διευθύνσεις IP και πόσα δεδομένα
+              περνάνε, ποτέ τον ήχο ή την εικόνα.
+            </td>
+          </tr>
+        </table>
+        <p>
+          Οι παρακάτω είναι ανεξάρτητες υπηρεσίες, χωρίς σύμβαση επεξεργασίας
+          μαζί μας. Λαμβάνουν μόνο ό,τι περιγράφεται εδώ, και για αυτό ισχύουν οι
+          δικοί τους όροι απορρήτου.
+        </p>
+        <table>
+          <tr>
+            <th>Google (σύνδεση με Google)</th>
             <td>
               Μόνο αν διαλέξεις τη σύνδεση με Google. Η Google μας επιβεβαιώνει
               ποιος είσαι· εμείς λαμβάνουμε το email και το όνομά σου.
             </td>
           </tr>
           <tr>
-            <th>Servers σύνδεσης κλήσεων (Google, Cloudflare)</th>
+            <th>Google (server STUN)</th>
             <td>
-              Όταν ξεκινά μια κλήση, κάθε συσκευή ρωτάει έναν δημόσιο server
-              «STUN» της Google ή της Cloudflare ποια είναι η δική της διεύθυνση
-              στο διαδίκτυο, για να βρουν οι δύο συσκευές η μία την άλλη. Αυτός ο
-              server βλέπει τη διεύθυνση IP σου και τίποτε άλλο. Όταν δύο δίκτυα
-              δεν επιτρέπουν απευθείας σύνδεση, η κλήση περνάει από τον
-              αναμεταδότη (TURN) της Cloudflare. Ο αναμεταδότης μεταφέρει δεδομένα
-              που είναι ήδη κρυπτογραφημένα από άκρη σε άκρη, οπότε βλέπει
-              διευθύνσεις IP και πόσα δεδομένα περνάνε, ποτέ τον ήχο ή την εικόνα.
+              Ο δεύτερος δημόσιος server «STUN» που ρωτάει η συσκευή σου όταν
+              ξεκινά μια κλήση, όπως παραπάνω. Βλέπει τη διεύθυνση IP σου και
+              τίποτε άλλο.
             </td>
           </tr>
           <tr>
@@ -677,8 +693,9 @@
         <h2>Who else touches your data</h2>
         <p>
           We are a small operation and we do not run our own infrastructure. These
-          companies process data on our behalf, under contract, and are not allowed
-          to use it for their own purposes.
+          companies (Supabase, Vercel, Resend, Cloudflare) process data on our
+          behalf, under a data processing agreement, and are not allowed to use it
+          for their own purposes.
         </p>
         <table>
           <tr>
@@ -703,20 +720,33 @@
             </td>
           </tr>
           <tr>
-            <th>Google</th>
+            <th>Cloudflare (call connections)</th>
+            <td>
+              When a call starts, each device asks a public &ldquo;STUN&rdquo;
+              server for its own internet address, so the two devices can find
+              each other. That server sees your IP address and nothing else. When
+              two networks don&rsquo;t allow a direct connection, the call is
+              relayed through Cloudflare&rsquo;s TURN service. The relay passes
+              along data that is already encrypted end to end, so it sees IP
+              addresses and how much data flows, never the sound or picture.
+            </td>
+          </tr>
+        </table>
+        <p>
+          The following are independent services with no data processing
+          agreement with us. They receive only what is described here, and their
+          own privacy terms apply to it.
+        </p>
+        <table>
+          <tr>
+            <th>Google (Sign-In)</th>
             <td>Only if you choose Google Sign-In. Google confirms your identity to us; we receive your email address and name.</td>
           </tr>
           <tr>
-            <th>Call connection servers (Google, Cloudflare)</th>
+            <th>Google (STUN server)</th>
             <td>
-              When a call starts, each device asks a public &ldquo;STUN&rdquo; server
-              run by Google or Cloudflare for its own internet address, so the two
-              devices can find each other. That server sees your IP address and
-              nothing else. When two networks don&rsquo;t allow a direct
-              connection, the call is relayed through Cloudflare&rsquo;s TURN
-              service. The relay passes along data that is already encrypted end
-              to end, so it sees IP addresses and how much data flows, never the
-              sound or picture.
+              The second public &ldquo;STUN&rdquo; server your device asks when a
+              call starts, as above. It sees your IP address and nothing else.
             </td>
           </tr>
           <tr>
