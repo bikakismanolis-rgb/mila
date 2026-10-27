@@ -1,5 +1,5 @@
 // Photos with caption, viewer, video thumbnail, forward, mute/pin/archive, delivered ticks,
-// video compression.
+// video compression, and sending while offline (outbox).
 import { chromium } from "playwright-core";
 import zlib from "node:zlib";
 const BASE = process.env.E2E_BASE || "http://localhost:5173";
@@ -346,6 +346,85 @@ check(
   sentSize > 0 && sentSize < bigSize / 4,
   String(sentSize),
 );
+
+// --- Offline: what fails stays in the chat, and goes when the connection is back
+await ann.fill(".conversation-inner textarea", "");
+await ann.context().setOffline(true);
+await ann.fill(".conversation-inner textarea", "Γράφω χωρίς σήμα");
+await ann.keyboard.press("Enter");
+await ann.waitForSelector(".msg.pending.failed", { timeout: 10000 }).catch(() => null);
+check(
+  "offline message stays as 'not sent', with try again and delete",
+  (await ann.locator(".msg.pending.failed .pending-actions button").count()) === 2,
+);
+check("its text is not put back in the box", (await ann.inputValue(".conversation-inner textarea")) === "");
+await ann.click('.attach-menu button[aria-label="Στείλε φωτογραφία ή αρχείο"]');
+const [chooser3] = await Promise.all([
+  ann.waitForEvent("filechooser"),
+  ann.click('.menu-popover.up button:has-text("Φωτογραφίες")'),
+]);
+await chooser3.setFiles({ name: "tunnel.png", mimeType: "image/png", buffer: png(400, 300) });
+await ann.waitForSelector(".send-caption .send:not([disabled])", { timeout: 15000 });
+await ann.click(".send-caption .send");
+await ann
+  .waitForFunction(() => document.querySelectorAll(".msg.pending.failed").length === 2, null, { timeout: 10000 })
+  .catch(() => null);
+check("an offline photo waits as well", (await ann.locator(".msg.pending.failed").count()) === 2);
+check("the waiting photo is shown", (await ann.locator(".msg.pending.failed img.message-image").count()) === 1);
+await ann.screenshot({ path: `${SHOTS}/outbox-offline.png` });
+const photosBefore = await ben.locator(".bubble.media img.message-image").count();
+
+await ann.context().setOffline(false);
+const arrived = await ben
+  .waitForFunction(
+    () => [...document.querySelectorAll(".bubble p")].some((p) => p.textContent?.includes("Γράφω χωρίς σήμα")),
+    null,
+    { timeout: 25000 },
+  )
+  .then(() => true)
+  .catch(() => false);
+check("the message is delivered once the connection is back", arrived);
+const photoArrived = await ben
+  .waitForFunction((n) => document.querySelectorAll(".bubble.media img.message-image").length > n, photosBefore, {
+    timeout: 25000,
+  })
+  .then(() => true)
+  .catch(() => false);
+check("so is the photo", photoArrived);
+await ann.waitForFunction(() => !document.querySelector(".msg.pending"), null, { timeout: 20000 }).catch(() => null);
+check("nothing is left waiting on the sender's side", (await ann.locator(".msg.pending").count()) === 0);
+
+// --- The answer is lost, the message is not: trying again does not send it twice
+let cut = 0;
+await ann.route("**/rest/v1/rpc/send_message", async (route) => {
+  if (cut++ > 0) return route.continue();
+  await route.fetch(); // φτάνει στη βάση…
+  await route.abort("internetdisconnected"); // …αλλά η απάντηση χάνεται
+});
+await ann.fill(".conversation-inner textarea", "Μόνο μία φορά");
+await ann.keyboard.press("Enter");
+// Ή φαίνεται «δεν στάλθηκε» (και το πατάμε), ή φτάνει πρώτα το κανονικό μήνυμα
+// από το realtime και παίρνει τη θέση του.
+const retried = await ann.waitForSelector(".msg.pending.failed", { timeout: 6000 }).then(() => true).catch(() => false);
+if (retried) await ann.click(".msg.pending.failed .bubble");
+await ann.waitForFunction(() => !document.querySelector(".msg.pending"), null, { timeout: 15000 }).catch(() => null);
+await ann.unroute("**/rest/v1/rpc/send_message");
+await ben.reload();
+await ben.waitForSelector(".chatlist > button", { timeout: 20000 });
+await ben.click('.chatlist > button:has-text("Ann Archer")');
+await ben.waitForFunction(
+  () => [...document.querySelectorAll(".bubble p")].some((p) => p.textContent === "Μόνο μία φορά"),
+  null,
+  { timeout: 15000 },
+).catch(() => null);
+const copies = await ben.evaluate(
+  () => [...document.querySelectorAll(".bubble p")].filter((p) => p.textContent === "Μόνο μία φορά").length,
+);
+check(`a lost answer is sent exactly once (${retried ? "tapped try again" : "replaced by the real message"})`, copies === 1, String(copies));
+const mine = await ann.evaluate(
+  () => [...document.querySelectorAll(".bubble.own p")].filter((p) => p.textContent === "Μόνο μία φορά").length,
+);
+check("the sender sees it once too", mine === 1, String(mine));
 
 console.log(failures ? `\n${failures} FAILED` : "\nALL MEDIA CHECKS PASSED");
 await browser.close();

@@ -3567,6 +3567,62 @@ button {
 }
 
 /* --- Ειδοποιήσεις, ουρά αποστολής, συμπίεση βίντεο ------------------------ */
+/* Δικό μου μήνυμα που δεν έφυγε ακόμα. */
+.msg.pending .bubble {
+  cursor: default;
+  opacity: 0.75;
+}
+.msg.pending.failed .bubble {
+  cursor: pointer;
+  opacity: 1;
+  box-shadow: 0 0 0 2px #f2b8c5;
+}
+.bubble.own small svg.failed-icon {
+  width: 15px;
+  height: 15px;
+  color: #fff;
+  fill: #e0566f;
+}
+.msg.pending .media-open {
+  cursor: inherit;
+}
+.pending-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+  max-width: min(540px, 92%);
+}
+.pending-reason {
+  color: #c43d58;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+.pending-reason small {
+  display: block;
+  color: #8d8a99;
+  font-weight: 400;
+}
+.pending-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 10px;
+  padding: 6px 10px;
+  background: #efedf6;
+  color: var(--purple);
+  font-weight: 700;
+  font-size: 12px;
+}
+.pending-actions button.danger {
+  color: #c43d58;
+  background: #f8e8ec;
+}
+
 .squeeze-progress {
   display: flex;
   flex-direction: column;

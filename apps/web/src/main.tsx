@@ -40,6 +40,7 @@ import { bootstrapNative } from "./native";
 import { t, translateError } from "./i18n";
 import { listTime } from "./format";
 import { disablePush, refreshPushOwner } from "./push";
+import * as outbox from "./outbox";
 import { Empty } from "./components/common";
 import { Login } from "./components/Login";
 import { Landing } from "./components/Landing";
@@ -551,6 +552,8 @@ function App() {
       new Promise((resolve) => setTimeout(resolve, 2500)),
     ]);
     await supabase?.auth.signOut();
+    // Ό,τι δεν είχε φύγει ήταν του λογαριασμού που φεύγει.
+    outbox.clear();
     location.reload();
   }
 

@@ -58,6 +58,7 @@ One web build serves all four channels — see `docs/DISTRIBUTION.md` for the fu
 - End-to-end encrypted messages and attachments (see below)
 - Realtime messages, typing indicators, read receipts and unread badges
 - Photo, video and file attachments up to 50 MB; large videos are made smaller (about 720p) in the browser before sending
+- Messages, photos, voice notes and files that fail to send stay in the chat as "not sent", retry by themselves when the connection is back, and are never sent twice
 - Rate limits on messages, new conversations, email lookups, sign-ups, uploads, reactions and reports
 - Consent-based CSV and vCard contact matching using email hashes
 - Privacy settings and a responsive mobile and desktop UI

@@ -6,6 +6,7 @@ import {
   Ban,
   Check,
   CheckCheck,
+  CircleAlert,
   Clock,
   Copy,
   CornerUpLeft,
@@ -15,9 +16,11 @@ import {
   LockKeyhole,
   Pencil,
   Play,
+  RotateCw,
   Trash2,
 } from "lucide-react";
 import type { Chat, Msg } from "../data";
+import type { Pending } from "../outbox";
 import { t } from "../i18n";
 import { fileSize, time } from "../format";
 import { clock } from "./Call";
@@ -339,6 +342,114 @@ export function Bubble({
             </button>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/** Δικό μου μήνυμα που δεν έφυγε ακόμα (outbox.ts): «στέλνεται…», ή «δεν
+ *  στάλθηκε» με επανάληψη (πάτημα στη φούσκα) και διαγραφή. */
+export function PendingBubble({
+  item,
+  nameOf,
+  onRetry,
+  onDelete,
+}: {
+  item: Pending;
+  nameOf: (userId: string, fallback?: string | null) => string;
+  onRetry: () => void;
+  onDelete: () => void;
+}) {
+  const file = item.file;
+  const mime = file?.type || "";
+  const isImage = mime.startsWith("image/");
+  const isVideo = mime.startsWith("video/");
+  const isAudio = Boolean(file && (item.info.voice || mime.startsWith("audio/")));
+  const failed = item.state === "failed";
+  const ratio =
+    item.info.width && item.info.height ? `${item.info.width} / ${item.info.height}` : undefined;
+
+  return (
+    <div className={`msg own pending ${failed ? "failed" : ""}`}>
+      <div
+        className={`bubble own ${isImage || isVideo ? "media" : ""}`}
+        role={failed ? "button" : undefined}
+        aria-label={failed ? t("outbox.retry") : undefined}
+        onClick={(e) => {
+          // Ο player του φωνητικού παίζει, δεν ξαναστέλνει.
+          if (!failed || (e.target as HTMLElement).closest(".voice-player")) return;
+          onRetry();
+        }}
+      >
+        {item.replyTo && (
+          <div className="quote">
+            <b>{nameOf(item.replyTo.senderId, item.replyTo.senderName)}</b>
+            <small>{messageSnippet(item.replyTo)}</small>
+          </div>
+        )}
+        {file && isImage ? (
+          <span className="media-open" style={{ aspectRatio: ratio }}>
+            <img className="message-image" src={item.preview} alt={file.name} />
+          </span>
+        ) : file && isVideo ? (
+          <span className="media-open video" style={{ aspectRatio: ratio }}>
+            {item.info.poster ? (
+              <img className="message-image" src={item.info.poster} alt="" />
+            ) : (
+              <span className="media-placeholder" />
+            )}
+            <span className="play-badge">
+              <Play size={22} />
+            </span>
+          </span>
+        ) : file && isAudio ? (
+          <VoicePlayer
+            attachment={{
+              id: item.id,
+              name: file.name,
+              mime,
+              size: file.size,
+              path: "",
+              url: item.preview,
+              duration: item.info.duration,
+              waveform: item.info.waveform,
+              voice: item.info.voice,
+            }}
+            own
+          />
+        ) : file ? (
+          <span className="file-card">
+            <FileText />
+            <span>
+              <b>{file.name}</b>
+              <small>{fileSize(file.size)}</small>
+            </span>
+          </span>
+        ) : null}
+        {item.body && <p>{item.body}</p>}
+        <small>
+          {time(item.createdAt)}{" "}
+          {failed ? (
+            <CircleAlert className="failed-icon" aria-label={t("outbox.failed")} />
+          ) : (
+            <Clock aria-label={t("outbox.sending")} />
+          )}
+        </small>
+      </div>
+      {failed && (
+        <div className="pending-actions">
+          <span className="pending-reason">
+            {t("outbox.failed")}
+            {/* Χωρίς δίκτυο ο λόγος είναι προφανής· οι άλλοι λόγοι λέγονται. */}
+            {item.error && item.error !== t("err.network") && <small>{item.error}</small>}
+          </span>
+          <button onClick={onRetry}>
+            <RotateCw size={14} /> {t("outbox.retry")}
+          </button>
+          <button className="danger" onClick={onDelete} aria-label={t("outbox.delete")}>
+            <Trash2 size={14} />
+          </button>
+        </div>
       )}
     </div>
   );

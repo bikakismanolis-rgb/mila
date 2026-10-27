@@ -618,6 +618,10 @@ const en = {
   "err.editWindow": "Messages can only be edited for 15 minutes after sending.",
   "err.pinLimit": "You can pin up to 3 chats.",
   // --- messaging ---
+  "outbox.sending": "Sending…",
+  "outbox.failed": "Not sent. Tap to try again.",
+  "outbox.retry": "Try again",
+  "outbox.delete": "Delete",
   "squeeze.note": "Large video: it will be made smaller (720p) before it's sent.",
   "squeeze.working": "Making the video smaller… {p}%",
   "squeeze.workingN": "Making video {i} of {n} smaller… {p}%",
@@ -1183,6 +1187,10 @@ const el: Record<TKey, string> = {
   "err.editWindow": "Ένα μήνυμα αλλάζει μόνο μέσα σε 15 λεπτά από την αποστολή.",
   "err.pinLimit": "Μπορείς να καρφιτσώσεις έως 3 συνομιλίες.",
   // --- messaging ---
+  "outbox.sending": "Στέλνεται…",
+  "outbox.failed": "Δεν στάλθηκε. Πάτα για να ξαναδοκιμάσεις.",
+  "outbox.retry": "Δοκίμασε ξανά",
+  "outbox.delete": "Διαγραφή",
   "squeeze.note": "Μεγάλο βίντεο: θα μικρύνει (720p) πριν σταλεί.",
   "squeeze.working": "Το βίντεο μικραίνει… {p}%",
   "squeeze.workingN": "Μικραίνει το βίντεο {i} από {n}… {p}%",

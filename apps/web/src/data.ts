@@ -197,6 +197,22 @@ function fail(fallback: TKey, error: { message?: string } | null): never {
   throw new Error(translateError(error?.message) || t(fallback));
 }
 
+/** Σφάλμα αποστολής, με ό,τι χρειάζεται η ουρά αποστολής (outbox.ts):
+ *  retry  — αξίζει να ξαναδοκιμαστεί μόνο του (δίκτυο, όρια, κλειδιά που
+ *           άλλαξαν). Όχι όταν η απάντηση δεν θα αλλάξει (μπλοκαρισμένη
+ *           συνομιλία, πολύ μεγάλο αρχείο).
+ *  unsure — δεν ξέρουμε αν έφτασε (χάθηκε η απάντηση, έπεσε ο server). Τότε
+ *           δεν σβήνεται τίποτα: μπορεί το μήνυμα να γράφτηκε. */
+export type SendError = Error & { retry: boolean; unsure: boolean };
+
+function sendError(message: string, retry: boolean, unsure = false): SendError {
+  return Object.assign(new Error(message), { retry, unsure });
+}
+
+/** Ό,τι ξέρουμε ότι δεν θα περάσει όσες φορές κι αν ξαναδοκιμάσει. */
+const HOPELESS =
+  /cannot send messages to this conversation|message is too long|attachment does not belong|must be encrypted|not authenticated/i;
+
 async function currentUserId(): Promise<string> {
   const { data } = await db().auth.getUser();
   if (!data.user) throw new Error(t("err.signedOut"));
@@ -959,7 +975,7 @@ export async function uploadAttachment(
   conversationId: string,
   info: MediaInfo = {},
 ): Promise<NewAttachment> {
-  if (file.size > MAX_FILE) throw new Error(t("err.fileTooLarge"));
+  if (file.size > MAX_FILE) throw sendError(t("err.fileTooLarge"), false);
 
   const uid = await currentUserId();
   const sealed = await e2ee.encryptFile(await file.arrayBuffer());
@@ -974,12 +990,13 @@ export async function uploadAttachment(
       upsert: false,
     });
   if (error)
-    throw new Error(
+    throw sendError(
       /row-level security/i.test(error.message)
         ? t("err.limitUploads")
         : /maximum allowed size|too large/i.test(error.message)
           ? t("err.fileTooLarge")
           : translateError(error.message) || t("err.upload"),
+      !/maximum allowed size|too large/i.test(error.message),
     );
 
   return {
@@ -1018,6 +1035,11 @@ async function removeFiles(paths: string[]): Promise<void> {
   if (!paths.length) return;
   const { error } = await db().storage.from(BUCKET).remove(paths);
   if (error) console.warn("Could not remove files:", error.message);
+}
+
+/** Ένα αρχείο που ανέβηκε για μήνυμα που τελικά δεν θα σταλεί. */
+export function discardUpload(file: NewAttachment): Promise<void> {
+  return removeFiles([file.path]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1119,11 +1141,21 @@ export async function startChat(userId: string): Promise<string> {
 export async function sendMessage(
   conversationId: string,
   body: string,
-  options: { replyTo?: string; attachment?: NewAttachment; forwarded?: boolean } = {},
+  options: {
+    replyTo?: string;
+    attachment?: NewAttachment;
+    forwarded?: boolean;
+    /** Σε επανάληψη: το ίδιο με την πρώτη φορά, ώστε η βάση να μη γράψει το
+     *  μήνυμα δεύτερη φορά αν η πρώτη είχε τελικά περάσει. */
+    clientId?: string;
+    /** Το αρχείο μένει στο storage ακόμα κι αν αποτύχει: το κρατάει ο καλών
+     *  για να ξαναδοκιμάσει (outbox.ts). */
+    keepFile?: boolean;
+  } = {},
 ): Promise<void> {
   const uid = await sessionUserId();
   const device = await ensureDevice();
-  const clientId = crypto.randomUUID();
+  const clientId = options.clientId || crypto.randomUUID();
   const file = options.attachment;
   const plain: MessagePlain = { t: body };
   if (file) plain.f = plainFile(file);
@@ -1132,6 +1164,7 @@ export async function sendMessage(
   // Δύο προσπάθειες: αν στο μεταξύ μπήκε νέο μέλος ή νέα συσκευή, ο server
   // απαντάει «out of date» και ξανακρυπτογραφούμε με φρέσκια λίστα κλειδιών.
   let lastError: { message?: string } | null = null;
+  let lastStatus = 0;
   for (let attempt = 0; attempt < 2; attempt++) {
     const recipients = await recipientsFor(conversationId, attempt > 0);
     const sealed = await e2ee.encryptMessage(
@@ -1140,7 +1173,7 @@ export async function sendMessage(
       plain,
       recipients,
     );
-    const { error } = await db().rpc("send_message", {
+    const { error, status } = await db().rpc("send_message", {
       conversation: conversationId,
       body: sealed.envelope,
       client_id: clientId,
@@ -1153,13 +1186,21 @@ export async function sendMessage(
       return;
     }
     lastError = error;
+    lastStatus = status;
     if (!/out of date/i.test(error.message)) break;
   }
+  // Χωρίς απάντηση (status 0: δίκτυο) ή με σφάλμα του server (5xx), δεν
+  // ξέρουμε αν το μήνυμα γράφτηκε.
+  const unsure = lastStatus === 0 || lastStatus >= 500;
   // Το μήνυμα δεν γράφτηκε, άρα το αρχείο που ανέβηκε δεν θα το δείξει ποτέ
-  // κανείς. Το μαζεύουμε.
-  if (file) void removeFiles([file.path]);
+  // κανείς. Το μαζεύουμε — εκτός αν μπορεί να γράφτηκε, ή αν το κρατάει ο καλών.
+  if (file && !unsure && !options.keepFile) void removeFiles([file.path]);
   if (/unknown sending device/i.test(lastError?.message || "")) deviceFor = null;
-  fail("err.send", lastError);
+  throw sendError(
+    translateError(lastError?.message) || t("err.send"),
+    !HOPELESS.test(lastError?.message || ""),
+    unsure,
+  );
 }
 
 /**
