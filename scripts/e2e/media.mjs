@@ -188,37 +188,47 @@ check("video plays in the viewer", playable);
 await ben.keyboard.press("Escape");
 
 // --- Video compression (canvas + MediaRecorder), straight from the module -----
-const squeezed = await ann.evaluate(async (b64) => {
-  const media = await import("/src/media.ts");
-  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  const file = new File([bytes], "clip.webm", { type: "video/webm" });
-  const batch = media.prepareSqueeze([file, file]);
-  if (!batch) return { error: "unsupported" };
-  let progress = 0;
-  const out = await batch.run(0, (f) => (progress = f), new AbortController().signal);
-  // Ακύρωση στη μέση: τίποτα δεν βγαίνει.
-  const stop = new AbortController();
-  setTimeout(() => stop.abort(), 300);
-  const cancelled = await batch.run(1, () => undefined, stop.signal);
-  batch.dispose();
-  if (!out) return { error: "no result", progress };
-  const url = URL.createObjectURL(out.file);
-  const video = document.createElement("video");
-  video.muted = true;
-  video.src = url;
-  const playable = await new Promise((resolve) => {
-    video.onloadeddata = () => resolve(true);
-    video.onerror = () => resolve(false);
-    setTimeout(() => resolve(false), 5000);
-  });
-  return { size: out.file.size, type: out.file.type, width: out.width, height: out.height, progress, playable, cancelled: cancelled === null };
-}, videoB64);
-check(
-  "a video can be re-encoded in the browser and still plays",
-  squeezed.playable && squeezed.progress === 1 && squeezed.width === 320 && squeezed.size > 0,
-  JSON.stringify(squeezed),
+// Μόνο με τον dev server του Vite: ένα build (scripts/serve-dist.mjs) δεν
+// σερβίρει το /src. Η συμπίεση μέσα από το παράθυρο αποστολής ελέγχεται πιο
+// κάτω και στα δύο.
+const fromSource = /javascript/.test(
+  (await fetch(`${BASE}/src/media.ts`).catch(() => null))?.headers.get("content-type") || "",
 );
-check("cancelling the compression gives nothing back", squeezed.cancelled === true, JSON.stringify(squeezed));
+if (fromSource) {
+  const squeezed = await ann.evaluate(async (b64) => {
+    const media = await import("/src/media.ts");
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const file = new File([bytes], "clip.webm", { type: "video/webm" });
+    const batch = media.prepareSqueeze([file, file]);
+    if (!batch) return { error: "unsupported" };
+    let progress = 0;
+    const out = await batch.run(0, (f) => (progress = f), new AbortController().signal);
+    // Ακύρωση στη μέση: τίποτα δεν βγαίνει.
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 300);
+    const cancelled = await batch.run(1, () => undefined, stop.signal);
+    batch.dispose();
+    if (!out) return { error: "no result", progress };
+    const url = URL.createObjectURL(out.file);
+    const video = document.createElement("video");
+    video.muted = true;
+    video.src = url;
+    const playable = await new Promise((resolve) => {
+      video.onloadeddata = () => resolve(true);
+      video.onerror = () => resolve(false);
+      setTimeout(() => resolve(false), 5000);
+    });
+    return { size: out.file.size, type: out.file.type, width: out.width, height: out.height, progress, playable, cancelled: cancelled === null };
+  }, videoB64);
+  check(
+    "a video can be re-encoded in the browser and still plays",
+    squeezed.playable && squeezed.progress === 1 && squeezed.width === 320 && squeezed.size > 0,
+    JSON.stringify(squeezed),
+  );
+  check("cancelling the compression gives nothing back", squeezed.cancelled === true, JSON.stringify(squeezed));
+} else {
+  console.log("  skip re-encoding straight from the module (needs the Vite dev server)");
+}
 
 // --- Forward the photo to Cat -------------------------------------------------
 await ben.waitForTimeout(500);
