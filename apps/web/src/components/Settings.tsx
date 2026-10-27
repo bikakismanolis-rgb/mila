@@ -17,7 +17,7 @@ import {
 import { supabase } from "../supabase";
 import * as backend from "../data";
 import type { Device, Privacy, User } from "../data";
-import { privacyPolicyUrl } from "../platform";
+import { privacyPolicyUrl, termsUrl } from "../platform";
 import { lang, setLang, t, translateError } from "../i18n";
 import type { Lang } from "../i18n";
 import { disablePush, enablePush, pushState } from "../push";
@@ -563,6 +563,12 @@ function AccountSection({ email }: { email: string }) {
           {t("account.readPolicy")}
         </a>{" "}
         {t("account.readPolicyAfter")}
+      </p>
+      <p className="hint">
+        <a href={termsUrl} target="_blank" rel="noopener noreferrer">
+          {t("legal.readTerms")}
+        </a>{" "}
+        {t("legal.readTermsAfter")}
       </p>
       <p className="hint">
         <a href="/install" target="_blank" rel="noopener noreferrer">

@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import { lang, setLang, t } from "../i18n";
 
+/** Οι νομικές σελίδες έχουν και τις δύο γλώσσες· το #en δείχνει τα Αγγλικά. */
+const legalSection = lang === "en" ? "#en" : "";
+
 export function Landing({
   start,
 }: {
@@ -131,7 +134,8 @@ export function Landing({
 
       <footer className="landing-footer">
         <a href="/install">{t("landing.footerInstall")}</a>
-        <a href="/privacy">{t("landing.footerPrivacy")}</a>
+        <a href={`/privacy${legalSection}`}>{t("landing.footerPrivacy")}</a>
+        <a href={`/terms${legalSection}`}>{t("legal.footerTerms")}</a>
         <span>© Mila</span>
       </footer>
     </div>

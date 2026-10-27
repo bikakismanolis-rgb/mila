@@ -9,6 +9,7 @@ import {
   authRedirectUrl,
   passwordResetRedirectUrl,
   privacyPolicyUrl,
+  termsUrl,
 } from "../platform";
 import { lang, setLang, t, translateError } from "../i18n";
 
@@ -118,6 +119,24 @@ function LanguageSwitch() {
         English
       </button>
     </div>
+  );
+}
+
+/** «…αποδέχεσαι τους όρους χρήσης και την πολιτική απορρήτου.» Ανοίγουν σε
+ *  νέα καρτέλα, για να μη χαθεί ό,τι έχει ήδη γραφτεί στη φόρμα. */
+function LegalLinks({ before }: { before: string }) {
+  return (
+    <>
+      {before}{" "}
+      <a href={termsUrl} target="_blank" rel="noopener noreferrer">
+        {t("legal.terms")}
+      </a>{" "}
+      {t("legal.and")}{" "}
+      <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
+        {t("legal.privacy")}
+      </a>
+      .
+    </>
   );
 }
 
@@ -378,11 +397,7 @@ export function Login({
         </form>
         {authMode === "signup" && (
           <p className="consent">
-            {t("login.consentBefore")}{" "}
-            <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer">
-              {t("login.privacyPolicy")}
-            </a>
-            . {t("login.consentAfter")}
+            <LegalLinks before={t("legal.consentBefore")} /> {t("login.consentAfter")}
           </p>
         )}
         <div className="auth-choice">
@@ -423,6 +438,13 @@ export function Login({
             )}
             <div className="google-button" ref={googleButtonRef} />
             {google === "ready" && <p className="hint">{t("login.googleHint")}</p>}
+            {/* Με Google ένας νέος λογαριασμός φτιάχνεται και από τη «Σύνδεση»,
+                χωρίς να περάσει από τη φόρμα εγγραφής. */}
+            {authMode === "signin" && (
+              <p className="consent">
+                <LegalLinks before={t("legal.googleConsentBefore")} />
+              </p>
+            )}
           </>
         )}
         {notice && <p className="notice">{notice}</p>}
