@@ -134,7 +134,7 @@ Still to do:
 
 1. A TURN relay for calls. Without one, calls between two mobile networks that both use carrier-grade NAT can fail to connect. Cloudflare's TURN service has a free tier: set `CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN` as secrets of the `push` Edge Function (or `TURN_URLS` with `TURN_SECRET` for your own coturn). See `docs/NEXT-STEPS.md`.
 2. The owner's name and contact email in the terms and the privacy policy (`[FULL NAME]`, `[CONTACT EMAIL]`).
-3. Minimum password length 8 in Supabase Auth (Authentication → Providers → Email), matching the app.
+3. Add yourself as a moderator and read `docs/MODERATION.md` (reports, suspension, the EU Digital Services Act in plain words). In Supabase Auth set the minimum password length to 8 (Authentication → Providers → Email), matching the app.
 4. Storage quotas and retention. The Free plan has 1 GB of file storage and an attachment can be 50 MB. Upload scanning is impossible for encrypted files by design.
 5. An accessibility audit.
 6. Forward secrecy for the encryption (see Security status).
