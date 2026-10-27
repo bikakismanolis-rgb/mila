@@ -323,6 +323,8 @@ select test.fails(format('select public.moderation_suspend(%L, %L)', :gus, 'x'),
   'permission denied', 'moderation_suspend is not for users');
 select test.fails(format('select public.moderation_unsuspend(%L)', :gus),
   'permission denied', 'moderation_unsuspend is not for users');
+select test.fails(format('select public.moderation_remove_message(%L)', :'m_gus'),
+  'permission denied', 'moderation_remove_message is not for users');
 reset role;
 set role anon;
 select test.fails('select * from public.moderation_reports()', 'permission denied', 'not for anon either');
@@ -360,6 +362,20 @@ select test.fails(format('select public.moderation_set_report_status(%L, %L)', :
   'status must be', 'only known statuses');
 select test.fails(format('select public.moderation_set_report_status(%L, %L)', gen_random_uuid(), 'reviewed'),
   'no report', 'unknown report');
+
+-- Κατέβασμα του μηνύματος της ομάδας για όλους. Η αναφορά μένει.
+select test.ok((select moderation_remove_message(:'m_gus_grp')->'files_to_delete') = '[]'::jsonb,
+  'removing a message lists its files');
+select test.ok((select ciphertext = '' and deleted_at is not null from messages where id = :'m_gus_grp'),
+  'removed message has no ciphertext left');
+select test.ok(not exists (select 1 from message_keys where message_id = :'m_gus_grp'), 'and no keys');
+select test.ok((select message_deleted_at is not null from moderation_reports() where id = :'r_grp_msg'),
+  'the report shows the message was removed');
+select set_config('request.jwt.claim.sub', :fay, false);
+set role authenticated;
+select test.ok((select (get_message(:'m_gus_grp')->>'deleted')::boolean), 'members see it as deleted');
+reset role;
+select set_config('request.jwt.claim.sub', '', false);
 
 -- ---------------------------------------------------------------------------
 -- 6. Αναστολή

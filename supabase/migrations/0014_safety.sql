@@ -17,8 +17,8 @@
 --  5. Συντονιστές (πίνακας moderators): με κάθε νέα αναφορά παίρνουν
 --     ειδοποίηση «Νέα αναφορά», χωρίς ονόματα και χωρίς κείμενο.
 --  6. Εργαλεία για τον ιδιοκτήτη, ΜΟΝΟ από τον SQL editor: moderation_reports,
---     moderation_set_report_status, moderation_suspend, moderation_unsuspend.
---     Οδηγίες: docs/MODERATION.md.
+--     moderation_set_report_status, moderation_suspend, moderation_unsuspend,
+--     moderation_remove_message. Οδηγίες: docs/MODERATION.md.
 --  7. Εξαγωγή δεδομένων με κλήσεις και ρυθμίσεις συνομιλιών, και διαγραφή
 --     λογαριασμού που καθαρίζει και ό,τι πρόσθεσε το 0013.
 --
@@ -1045,6 +1045,39 @@ begin
 end;
 $$;
 
+-- Κατέβασμα ενός μηνύματος που παραβιάζει τους όρους ή τον νόμο, για όλους:
+-- ίδιο αποτέλεσμα με το «Διαγραφή για όλους» του αποστολέα. Η αναφορά μένει
+-- και δείχνει ότι σβήστηκε. Επιστρέφει τα αρχεία του, που σβήνονται με το χέρι
+-- από το Storage (η βάση δεν επιτρέπεται να σβήνει αρχεία η ίδια).
+create or replace function public.moderation_remove_message(p_message uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  paths jsonb := '[]'::jsonb;
+begin
+  if auth.uid() is not null then
+    raise exception 'Only from the SQL editor' using errcode = '42501';
+  end if;
+  if not exists (select 1 from messages where id = p_message) then
+    raise exception 'No message with id %', p_message using errcode = 'P0002';
+  end if;
+  select coalesce(jsonb_agg(a.storage_path), '[]'::jsonb) into paths
+  from attachments a where a.message_id = p_message;
+
+  delete from attachments where message_id = p_message;
+  delete from message_keys where message_id = p_message;
+  update message_reactions set emoji = null, updated_at = now()
+  where message_id = p_message and emoji is not null;
+  update messages
+  set ciphertext = '', sender_key = null, deleted_at = coalesce(deleted_at, now()), edited_at = null
+  where id = p_message;
+  return jsonb_build_object('removed', p_message, 'files_to_delete', paths);
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- 7. Εξαγωγή δεδομένων: + κλήσεις, ρυθμίσεις συνομιλιών, «σε σύνδεση»
 -- ---------------------------------------------------------------------------
@@ -1282,6 +1315,7 @@ revoke all on function public.moderation_reports(text) from public, anon, authen
 revoke all on function public.moderation_set_report_status(uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.moderation_suspend(uuid, text) from public, anon, authenticated, service_role;
 revoke all on function public.moderation_unsuspend(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.moderation_remove_message(uuid) from public, anon, authenticated, service_role;
 
 -- Το refuse_if_suspended το καλούν μόνο functions που τρέχουν ως ιδιοκτήτης.
 -- Για τους συνδεδεμένους: το is_active_user και το is_conversation_member
