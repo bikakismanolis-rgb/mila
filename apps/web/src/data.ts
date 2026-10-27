@@ -207,11 +207,16 @@ function fail(fallback: TKey, error: { message?: string } | null): never {
   throw new Error(translateError(error?.message) || t(fallback));
 }
 
-/** Η βάση αρνήθηκε επειδή ο λογαριασμός είναι σε αναστολή (ή δεν θεωρεί τον
- *  χρήστη ενεργό). Το main.tsx ξανακοιτάζει το προφίλ και, αν χρειάζεται,
+/** Η βάση αρνήθηκε κάτι που ένας λογαριασμός σε αναστολή δεν μπορεί να κάνει
+ *  (αποστολή, κλήση, ή οτιδήποτε με «Account suspended»). Το main.tsx
+ *  ξανακοιτάζει το προφίλ (μία ανάγνωση) και, αν όντως είναι σε αναστολή,
  *  δείχνει την οθόνη αναστολής αντί για ένα app που απλώς «χαλάει». */
 function checkAccountOn(error: { message?: string } | null) {
-  if (/account suspended|not authenticated/i.test(error?.message || ""))
+  if (
+    /account suspended|not authenticated|cannot send messages|cannot call this/i.test(
+      error?.message || "",
+    )
+  )
     window.dispatchEvent(new Event("mila:account-check"));
 }
 
